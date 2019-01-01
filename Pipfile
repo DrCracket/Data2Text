@@ -11,7 +11,6 @@ nltk = "*"
 tabulate = "*"
 numpy = "*"
 word2number = "*"
-h5py = "*"
 
 [requires]
 python_version = "3.7"

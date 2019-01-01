@@ -17,6 +17,7 @@ class load:
         self.index2word = {}
         self.summaries = list()
         self.n_words = 0
+
         # Count SOS, EOS, (H)ome and (V)isitor Team
         for word in ["PADDING", "SOS", "EOS", "H", "V"]:
             self.checkWord(word)
@@ -28,6 +29,7 @@ class load:
             for sample in dataset:
                 dim2 = self.getSmpLen(sample) if self.getSmpLen(
                     sample) > dim2 else dim2
+
             self.samples = torch.zeros(dim1, dim2, 4, dtype=torch.long)
             for idx_dim1, sample in enumerate(dataset):
                 self.addSample(sample, idx_dim1)
@@ -36,7 +38,7 @@ class load:
     def getSmpLen(self, sample):
         # substract the elements that don't get added as records
         # (e.g. because they are used as keys or are ignored)
-        length = -8-len(sample["box_score"]["PLAYER_NAME"])
+        length = -8 - len(sample["box_score"]["PLAYER_NAME"])
         for val in sample.values():
             if isinstance(val, dict):
                 for val in val.values():
