@@ -1,2 +1,4 @@
 # ignore the virtual environment
 /.venv
+# directory for cached data
+/.cache

@@ -1,20 +1,16 @@
-import tarfile
 from json import loads
-from nltk import sent_tokenize, word_tokenize
+from collections import Counter, defaultdict
+from math import floor
+from random import shuffle
+from nltk import sent_tokenize
 from word2number import w2n
+from os import path, makedirs
+from abc import ABC, abstractmethod
+import torch
+import tarfile
 
 
-class loader:
-    prons = set(["he", "He", "him", "Him", "his", "His", "they",
-                 "They", "them", "Them", "their", "Their"])  # leave out "it"
-    singular_prons = set(["he", "He", "him", "Him", "his", "His"])
-    plural_prons = set(["they", "They", "them", "Them", "their", "Their"])
-
-    number_words = set(["one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-                        "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
-                        "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
-                        "sixty", "seventy", "eighty", "ninety", "hundred", "thousand"])
-
+class Loader(ABC):
     bs_keys = ["PLAYER-PLAYER_NAME", "PLAYER-START_POSITION", "PLAYER-MIN", "PLAYER-PTS",
                "PLAYER-FGM", "PLAYER-FGA", "PLAYER-FG_PCT", "PLAYER-FG3M", "PLAYER-FG3A",
                "PLAYER-FG3_PCT", "PLAYER-FTM", "PLAYER-FTA", "PLAYER-FT_PCT", "PLAYER-OREB",
@@ -27,36 +23,72 @@ class loader:
 
     NUM_PLAYERS = 13
 
-    def __init__(self, file_, folder="boxscore-data", dataset="rotowire"):
-        path = folder + "/" + dataset + ".tar.bz2"
-        member = dataset + "/" + file_
+    def __init__(self, folder="boxscore-data", dataset="rotowire"):
+        try:
+            print("Attempting to load cached data...")
+            data = self.load_cached_data()
+            print("Success!")
+        except FileNotFoundError:
+            print("Failed to locate files")
+            print("Generating data from datasets...")
+            path = folder + "/" + dataset + ".tar.bz2"
 
-        self.word2index = {}
-        self.word2count = {}
-        self.index2word = {}
-        self.n_words = 0
-        self.summaries = list()
+            with tarfile.open(path, 'r:bz2') as f:
+                trdata = loads(f.extractfile(dataset + "/train.json").read())
+                valdata = loads(f.extractfile(dataset + "/valid.json").read())
+                testdata = loads(f.extractfile(dataset + "/test.json").read())
+                data = self.preproc_datasets(trdata, valdata, testdata)
 
-        with tarfile.open(path, 'r:bz2') as f:
-            self.trdata = loads(f.extractfile(member).read())
+        self.trdata = data[0]
+        self.valdata = data[1]
+        self.testdata = data[2]
 
-        # Count SOS, EOS, (H)ome and (V)isitor Team
-        for word in ["PAD", "SOS", "EOS", "H", "V"]:
-            self.handle_word(word)
+    @abstractmethod
+    def load_cached_data(self):
+        pass
 
-        self.max_sent_len = self.parse_summaries()
-        records = self.make_records()
-        content_plans = self.make_pointerfi()
+    @abstractmethod
+    def preproc_datasets(self):
+        pass
 
-    def handle_word(self, word):
-        if word not in self.word2index:
-            self.word2index[word] = self.n_words
-            self.word2count[word] = 1
-            self.index2word[self.n_words] = word
-            self.n_words += 1
-        else:
-            self.word2count[word] += 1
-        return self.word2index[word]
+
+class ExtractorLoader(Loader):
+    prons = set(["he", "He", "him", "Him", "his", "His", "they",
+                 "They", "them", "Them", "their", "Their"])  # leave out "it"
+    singular_prons = set(["he", "He", "him", "Him", "his", "His"])
+    plural_prons = set(["they", "They", "them", "Them", "their", "Their"])
+
+    number_words = set(["one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+                        "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+                        "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
+                        "sixty", "seventy", "eighty", "ninety", "hundred", "thousand"])
+
+    def __init__(self, folder="boxscore-data", dataset="rotowire"):
+        super(ExtractorLoader, self).__init__(folder, dataset)
+
+    def load_cached_data(self):
+        trsents = torch.load(".cache/extractor/trsents.pt")
+        trlens = torch.load(".cache/extractor/trlens.pt")
+        trentdists = torch.load(".cache/extractor/trentdists.pt")
+        trnumdists = torch.load(".cache/extractor/trnumdists.pt")
+        trlabels = torch.load(".cache/extractor/trlabels.pt")
+        trdata = (trsents, trlens, trentdists, trnumdists, trlabels)
+
+        valsents = torch.load(".cache/extractor/valsents.pt")
+        vallens = torch.load(".cache/extractor/vallens.pt")
+        valentdists = torch.load(".cache/extractor/valentdists.pt")
+        valnumdists = torch.load(".cache/extractor/valnumdists.pt")
+        vallabels = torch.load(".cache/extractor/vallabels.pt")
+        valdata = (valsents, vallens, valentdists, valnumdists, vallabels)
+
+        testsents = torch.load(".cache/extractor/testsents.pt")
+        testlens = torch.load(".cache/extractor/testlens.pt")
+        testentdists = torch.load(".cache/extractor/testentdists.pt")
+        testnumdists = torch.load(".cache/extractor/testnumdists.pt")
+        testlabels = torch.load(".cache/extractor/testlabels.pt")
+        testdata = (testsents, testlens, testentdists, testnumdists, testlabels)
+
+        return (trdata, valdata, testdata)
 
     def get_ents(self, dat):
         players = set()
@@ -131,7 +163,6 @@ class loader:
                         # is a pronoun
                         sent_ents.append((i, i + 1, sent[i], True))
                     else:
-                        # print "replacing", sent[i], "with", referent[2], "in", " ".join(sent)
                         # pretend it's not a pron and put in matching string
                         sent_ents.append((i, i + 1, referent[2], False))
                 else:
@@ -157,7 +188,6 @@ class loader:
     def extract_numbers(self, sent):
         sent_nums = []
         i = 0
-        # print sent
         while i < len(sent):
             toke = sent[i]
             a_number = False
@@ -198,15 +228,12 @@ class loader:
             if len(keys) > 1:  # take the earliest one
                 keys.sort(key=lambda x: int(x))
                 keys = keys[:1]
-                # print "picking", bs["PLAYER_NAME"][keys[0]]
         if len(keys) == 0:
             for k, v in bs["FIRST_NAME"].items():
                 if entname == v:
                     keys.append(k)
             if len(keys) > 1:  # if we matched on first name and there are a bunch just forget about it
                 return None
-        # if len(keys) == 0:
-            # print "Couldn't find", entname, "in", bs["PLAYER_NAME"].values()
         assert len(keys) <= 1, entname + " : " + \
             str(bs["PLAYER_NAME"].values())
         return keys[0] if len(keys) > 0 else None
@@ -274,6 +301,91 @@ class loader:
                         rels.append((ent, numtup, "NONE", None))
         return rels
 
+    def append_candidate_rels(self, entry, summ, all_ents, prons, players, teams, cities, candrels):
+        """
+        appends tuples of form (sentence_tokens, [rels]) to candrels
+        """
+        sents = sent_tokenize(summ)
+        for j, sent in enumerate(sents):
+            tokes = sent.split()
+            ents = self.extract_entities(tokes, all_ents, prons)
+            nums = self.extract_numbers(tokes)
+            rels = self.get_rels(entry, ents, nums, players, teams, cities)
+            if len(rels) > 0:
+                candrels.append((tokes, rels))
+        return candrels
+
+    def get_candidate_rels(self, trdata, valdata, testdata):
+        all_ents, players, teams, cities = self.get_ents(trdata)
+
+        extracted_stuff = []
+        for dataset in (trdata, valdata, testdata):
+            nugz = []
+            for i, entry in enumerate(dataset):
+                summ = " ".join(entry['summary'])
+                self.append_candidate_rels(entry, summ, all_ents, self.prons, players, teams, cities, nugz)
+
+            extracted_stuff.append(nugz)
+
+        del all_ents
+        del players
+        del teams
+        del cities
+        return extracted_stuff
+
+    def append_to_data(self, tup, sents, lens, entdists, numdists, labels, vocab, labeldict, max_len):
+        """
+        tup is (sent, [rels]);
+        each rel is ((ent_start, ent_ent, ent_str), (num_start, num_end, num_str), label)
+        """
+        sent = [vocab[wrd] if wrd in vocab else vocab["UNK"] for wrd in tup[0]]
+        sentlen = len(sent)
+        sent.extend([-1] * (max_len - sentlen))
+        for rel in tup[1]:
+            ent, num, label, idthing = rel
+            sents.append(sent)
+            lens.append(sentlen)
+            ent_dists = [j - ent[0] if j < ent[0] else j - ent[1] + 1 if j >= ent[1] else 0 for j in range(max_len)]
+            entdists.append(ent_dists)
+            num_dists = [j - num[0] if j < num[0] else j - num[1] + 1 if j >= num[1] else 0 for j in range(max_len)]
+            numdists.append(num_dists)
+            labels.append(labeldict[label])
+
+    def append_multilabeled_data(self, tup, sents, lens, entdists, numdists, labels, vocab, labeldict, max_len):
+        """
+        used for val, since we have contradictory labelings...
+        tup is (sent, [rels]);
+        each rel is ((ent_start, ent_end, ent_str), (num_start, num_end, num_str), label)
+        """
+        sent = [vocab[wrd] if wrd in vocab else vocab["UNK"] for wrd in tup[0]]
+        sentlen = len(sent)
+        sent.extend([-1] * (max_len - sentlen))
+        # get all the labels for the same rel
+        unique_rels = defaultdict(list)
+        for rel in tup[1]:
+            ent, num, label, idthing = rel
+            unique_rels[ent, num].append(label)
+
+        for rel, label_list in unique_rels.items():
+            ent, num = rel
+            sents.append(sent)
+            lens.append(sentlen)
+            ent_dists = [j - ent[0] if j < ent[0] else j - ent[1] + 1 if j >= ent[1] else 0 for j in range(max_len)]
+            entdists.append(ent_dists)
+            num_dists = [j - num[0] if j < num[0] else j - num[1] + 1 if j >= num[1] else 0 for j in range(max_len)]
+            numdists.append(num_dists)
+            labels.append([labeldict[label] for label in label_list])
+
+    def append_labelnums(self, labels):
+        labelnums = [len(labellist) for labellist in labels]
+        max_num_labels = max(labelnums)
+        print("Maximum number of labels:", max_num_labels)
+
+        # append number of labels to labels
+        for i, labellist in enumerate(labels):
+            labellist.extend([-1] * (max_num_labels - len(labellist)))
+            labellist.append(labelnums[i])
+
     def get_player_idxs(self, entry):
         nplayers = 0
         home_players, vis_players = [], []
@@ -293,240 +405,206 @@ class loader:
                     num_vis += 1
         return home_players, vis_players
 
-    def box_preproc2(self):
-        """
-        just gets src for now
-        """
-        srcs = [[] for i in range(2 * self.NUM_PLAYERS + 2)]
+    def preproc_datasets(self, trdata, valdata, testdata, multilabel_train=True, nonedenom=0):
+        rel_datasets = self.get_candidate_rels(trdata, valdata, testdata)
+        # make vocab and get labels
+        word_counter = Counter()
+        [word_counter.update(tup[0]) for tup in rel_datasets[0]]
+        for k in list(word_counter.keys()):
+            if word_counter[k] < 2:
+                del word_counter[k]  # will replace w/ unk
+        word_counter["UNK"] = 1
+        vocab = dict(((wrd, i + 1) for i, wrd in enumerate(word_counter.keys())))
+        labelset = set()
+        [labelset.update([rel[2] for rel in tup[1]]) for tup in rel_datasets[0]]
+        labeldict = dict(((label, i + 1) for i, label in enumerate(labelset)))
 
-        for entry in self.trdata:
-            home_players, vis_players = self.get_player_idxs(entry)
-            for ii, player_list in enumerate([home_players, vis_players]):
-                for j in range(self.NUM_PLAYERS):
-                    src_j = []
-                    player_key = player_list[j] if j < len(
-                        player_list) else None
-                    for k, key in enumerate(self.bs_keys):
-                        rulkey = key.split('-')[1]
-                        val = entry["box_score"][rulkey][player_key] if player_key is not None else "N/A"
-                        src_j.append(val)
-                    srcs[ii * self.NUM_PLAYERS + j].append(src_j)
+        # save stuff
+        trsents, trlens, trentdists, trnumdists, trlabels = [], [], [], [], []
+        valsents, vallens, valentdists, valnumdists, vallabels = [], [], [], [], []
+        testsents, testlens, testentdists, testnumdists, testlabels = [], [], [], [], []
 
-            home_src, vis_src = [], []
-            # required for now, so that linescores can be processed together with boxscores
-            for k in range(len(self.bs_keys) - len(self.ls_keys)):
-                home_src.append("PAD")
-                vis_src.append("PAD")
+        max_trlen = max((len(tup[0]) for tup in rel_datasets[0]))
+        print("Maximum training sentence length:", max_trlen)
 
-            for k, key in enumerate(self.ls_keys):
-                home_src.append(entry["home_line"][key])
-                vis_src.append(entry["vis_line"][key])
+        # do training data
+        for tup in rel_datasets[0]:
+            if multilabel_train:
+                self.append_multilabeled_data(tup, trsents, trlens, trentdists, trnumdists, trlabels, vocab, labeldict, max_trlen)
+            else:
+                self.append_to_data(tup, trsents, trlens, trentdists, trnumdists, trlabels, vocab, labeldict, max_trlen)
 
-            srcs[-2].append(home_src)
-            srcs[-1].append(vis_src)
+        if multilabel_train:
+            self.append_labelnums(trlabels)
 
-        return srcs
+        if nonedenom > 0:
+            # don't keep all the NONE labeled things
+            none_idxs = [i for i, labellist in enumerate(trlabels) if labellist[0] == labeldict["NONE"]]
+            shuffle(none_idxs)
+            # allow at most 1/(nonedenom+1) of NONE-labeled
+            num_to_keep = int(floor(float(len(trlabels) - len(none_idxs)) / nonedenom))
+            print("Originally", len(trlabels), "training examples")
+            print("Keeping", num_to_keep, "NONE-labeled examples")
+            ignore_idxs = set(none_idxs[num_to_keep:])
 
-    def linearized_preproc(self, srcs):
-        """
-        maps from a num-rows length list of lists of ntrain to an
-        ntrain-length list of concatenated rows
-        """
-        lsrcs = []
-        for i in range(len(srcs[0])):
-            src_i = []
-            for j in range(len(srcs)):
-                # slice list because we ignore first value and remove padding as it isn't needed anymore
-                src_i.extend(list(filter(lambda w: w != "PAD", srcs[j][i][1:])))
-            lsrcs.append(src_i)
-        return lsrcs
+            # get rid of most of the NONE-labeled examples
+            trsents = [thing for i, thing in enumerate(trsents) if i not in ignore_idxs]
+            trlens = [thing for i, thing in enumerate(trlens) if i not in ignore_idxs]
+            trentdists = [thing for i, thing in enumerate(trentdists) if i not in ignore_idxs]
+            trnumdists = [thing for i, thing in enumerate(trnumdists) if i not in ignore_idxs]
+            trlabels = [thing for i, thing in enumerate(trlabels) if i not in ignore_idxs]
 
-    def fix_target_idx(self, summ, assumed_idx, word, neighborhood=5):
-        """
-        tokenization can mess stuff up, so look around
-        """
-        for i in range(1, neighborhood + 1):
-            if assumed_idx + i < len(summ) and summ[assumed_idx + i] == word:
-                return assumed_idx + i
-            elif assumed_idx - i >= 0 and assumed_idx - i < len(summ) and summ[assumed_idx - i] == word:
-                return assumed_idx - i
-        return None
+        print(len(trsents), "training examples")
 
-    def make_records(self):
-        srcs = self.box_preproc2()
-        lsrcs = []
-        bs_len = len(self.bs_keys)
-        records = list()
+        # do val, which we also consider multilabel
+        max_vallen = max((len(tup[0]) for tup in rel_datasets[1]))
+        for tup in rel_datasets[1]:
+            self.append_multilabeled_data(tup, valsents, vallens, valentdists, valnumdists, vallabels, vocab, labeldict, max_vallen)
 
-        # maps from a num-rows length list of lists of ntrain to an ntrain-length list of concatenated rows
-        for i in range(len(srcs[0])):
-            src_i = []
-            for j in range(len(srcs)):
-                src_i.extend(srcs[j][i])
-            lsrcs.append(src_i)
+        self.append_labelnums(vallabels)
 
-        for sample in lsrcs:
-            row = list()
-            for i in range(0, len(sample), bs_len):
-                entity = sample[i]
-                values = sample[i + 1:i + bs_len]
+        print(len(valsents), "validation examples")
 
-                if entity != "PAD":  # parse as boxscore data
-                    for value, type_ in zip(values, self.bs_keys[1:]):  # don't use PLAYER_NAME as value
-                        row.append((self.handle_word(type_), self.handle_word(entity), self.handle_word(value)))
-                else:  # parse linescore data
-                    entity = sample[i + bs_len - 1]  # TEAM-NAME
-                    values = sample[i + bs_len - len(self.ls_keys):i + bs_len + 1]  # ignore the padded entries
-                    for value, type_ in zip(values, self.ls_keys):
-                        row.append((self.handle_word(type_), self.handle_word(entity), self.handle_word(value)))
-            records.append(row)
+        # do test, which we also consider multilabel
+        max_testlen = max((len(tup[0]) for tup in rel_datasets[2]))
+        for tup in rel_datasets[2]:
+            self.append_multilabeled_data(tup, testsents, testlens, testentdists, testnumdists, testlabels, vocab, labeldict, max_testlen)
 
-        return records
+        self.append_labelnums(testlabels)
 
-    def parse_summaries(self):
-        max_sent_len = 0
-        for entry in self.trdata:
-            summ = entry["summary"]
-            max_sent_len = len(summ) if len(summ) > max_sent_len else max_sent_len
-            for word in summ:
-                self.handle_word(word)
+        print(len(testsents), "test examples")
 
-        return max_sent_len
+        # create tensors and save to disk
+        if not path.exists(".cache/extractor"):
+            makedirs(".cache/extractor")
 
-    def make_content_plan(self, resolve_prons=False):
-        """
-        for each target word want to know where it could've been copied from
-        N.B. this function only looks at string equality in determining pointerness.
-        this means that if we sneak in pronoun strings as their referents, we won't point to the
-        pronoun if the referent appears in the table; we may use this tho to point to the correct number
-        """
+        trsents = torch.tensor(trsents)
+        trlens = torch.tensor(trlens)
+        trentdists = torch.tensor(trentdists)
+        trnumdists = torch.tensor(trnumdists)
+        trlabels = torch.tensor(trlabels)
+        torch.save(trsents, ".cache/extractor/trsents.pt")
+        torch.save(trlens, ".cache/extractor/trlens.pt")
+        torch.save(trentdists, ".cache/extractor/trentdists.pt")
+        torch.save(trnumdists, ".cache/extractor/trnumdists.pt")
+        torch.save(trlabels, ".cache/extractor/trlabels.pt")
+        trdata = (trsents, trlens, trentdists, trnumdists, trlabels)
 
-        bs_len = (2 * self.NUM_PLAYERS) * (len(self.bs_keys) - 1)  # -1 b/c we trim first col
-        ls_len = len(self.ls_keys)
-        rulsrcs = self.linearized_preproc(self.box_preproc2())
+        valsents = torch.tensor(valsents)
+        vallens = torch.tensor(vallens)
+        valentdists = torch.tensor(valentdists)
+        valnumdists = torch.tensor(valnumdists)
+        vallabels = torch.tensor(vallabels)
+        torch.save(valsents, ".cache/extractor/valsents.pt")
+        torch.save(vallens, ".cache/extractor/vallens.pt")
+        torch.save(valentdists, ".cache/extractor/valentdists.pt")
+        torch.save(valnumdists, ".cache/extractor/valnumdists.pt")
+        torch.save(vallabels, ".cache/extractor/vallabels.pt")
+        valdata = (valsents, vallens, valentdists, valnumdists, vallabels)
 
-        all_ents, players, teams, cities = self.get_ents(self.trdata)
+        testsents = torch.tensor(testsents)
+        testlens = torch.tensor(testlens)
+        testentdists = torch.tensor(testentdists)
+        testnumdists = torch.tensor(testnumdists)
+        testlabels = torch.tensor(testlabels)
+        torch.save(testsents, ".cache/extractor/testsents.pt")
+        torch.save(testlens, ".cache/extractor/testlens.pt")
+        torch.save(testentdists, ".cache/extractor/testentdists.pt")
+        torch.save(testnumdists, ".cache/extractor/testnumdists.pt")
+        torch.save(testlabels, ".cache/extractor/testlabels.pt")
+        testdata = (testsents, testlens, testentdists, testnumdists, testlabels)
 
-        skipped = 0
-
-        train_links = []
-        for i, entry in enumerate(self.trdata):
-            home_players, vis_players = self.get_player_idxs(entry)
-            inv_home_players = {pkey: jj for jj,
-                                pkey in enumerate(home_players)}
-            inv_vis_players = {pkey: (jj + self.NUM_PLAYERS)
-                               for jj, pkey in enumerate(vis_players)}
-            summ = " ".join(entry['summary'])
-            sents = sent_tokenize(summ)
-            words_so_far = 0
-            links = []
-            prev_ents = []
-            for j, sent in enumerate(sents):
-                # just assuming this gives me back original tokenization
-                tokes = word_tokenize(sent)
-                ents = self.extract_entities(tokes, all_ents, self.prons, prev_ents, resolve_prons, players, teams, cities)
-                if resolve_prons:
-                    prev_ents.append(ents)
-                nums = self.extract_numbers(tokes)
-                # should return a list of (enttup, numtup, rel-name, identifier) for each rel licensed by the table
-                rels = self.get_rels(entry, ents, nums, players, teams, cities)
-                for (enttup, numtup, label, idthing) in rels:
-                    if label != 'NONE':
-                        # try to find corresponding words (for both ents and nums)
-                        ent_start, ent_end, entspan, _ = enttup
-                        num_start, num_end, numspan = numtup
-                        if isinstance(idthing, bool):  # city or team
-                            # get entity indices if any
-                            for k, word in enumerate(tokes[ent_start:ent_end]):
-                                src_idx = None
-                                if word == entry["home_name"]:
-                                    src_idx = bs_len + ls_len - 1  # last thing
-                                elif word == entry["home_city"]:
-                                    src_idx = bs_len + ls_len - 2  # second to last thing
-                                elif word == entry["vis_name"]:
-                                    src_idx = bs_len + 2 * ls_len - 1  # last thing
-                                elif word == entry["vis_city"]:
-                                    src_idx = bs_len + 2 * ls_len - 2  # second to last thing
-                                if src_idx is not None:
-                                    targ_idx = words_so_far + ent_start + k
-                                    if targ_idx >= len(entry["summary"]) or entry["summary"][targ_idx] != word:
-                                        targ_idx = self.fix_target_idx(entry["summary"], targ_idx, word)
-                                    # print word, rulsrcs[i][src_idx], entry["summary"][words_so_far + ent_start + k]
-                                    if targ_idx is None:
-                                        skipped += 1
-                                    else:
-                                        assert rulsrcs[i][src_idx] == word and entry["summary"][targ_idx] == word
-                                        # src_idx, target_idx
-                                        links.append((src_idx, targ_idx))
-
-                            # get num indices if any
-                            for k, word in enumerate(tokes[num_start:num_end]):
-                                src_idx = None
-                                if idthing:  # home, so look in the home row
-                                    if entry["home_line"][label] == word:
-                                        col_idx = self.ls_keys.index(label)
-                                        src_idx = bs_len + col_idx
-                                else:
-                                    if entry["vis_line"][label] == word:
-                                        col_idx = self.ls_keys.index(label)
-                                        src_idx = bs_len + ls_len + col_idx
-                                if src_idx is not None:
-                                    targ_idx = words_so_far + num_start + k
-                                    if targ_idx >= len(entry["summary"]) or entry["summary"][targ_idx] != word:
-                                        targ_idx = self.fix_target_idx(entry["summary"], targ_idx, word)
-                                    # print word, rulsrcs[i][src_idx], entry["summary"][words_so_far + num_start + k]
-                                    if targ_idx is None:
-                                        skipped += 1
-                                    else:
-                                        assert rulsrcs[i][src_idx] == word and entry["summary"][targ_idx] == word
-                                        links.append((src_idx, targ_idx))
-                        else:  # players
-                            # get row corresponding to this player
-                            player_row = None
-                            if idthing in inv_home_players:
-                                player_row = inv_home_players[idthing]
-                            elif idthing in inv_vis_players:
-                                player_row = inv_vis_players[idthing]
-                            if player_row is not None:
-                                # ent links
-                                for k, word in enumerate(tokes[ent_start:ent_end]):
-                                    src_idx = None
-                                    if word == entry["box_score"]["FIRST_NAME"][idthing]:
-                                        src_idx = (player_row + 1) * (len(self.bs_keys) - 1) - 2  # second to last thing
-                                    elif word == entry["box_score"]["SECOND_NAME"][idthing]:
-                                        src_idx = (player_row + 1) * (len(self.bs_keys) - 1) - 1  # last thing
-                                    if src_idx is not None:
-                                        targ_idx = words_so_far + ent_start + k
-                                        if entry["summary"][targ_idx] != word:
-                                            targ_idx = self.fix_target_idx(entry["summary"], targ_idx, word)
-                                        if targ_idx is None:
-                                            skipped += 1
-                                        else:
-                                            assert rulsrcs[i][src_idx] == word and entry["summary"][targ_idx] == word
-                                            # src_idx, target_idx
-                                            links.append((src_idx, targ_idx))
-                                # num links
-                                for k, word in enumerate(tokes[num_start:num_end]):
-                                    src_idx = None
-                                    if word == entry["box_score"][label.split('-')[1]][idthing]:
-                                        # subtract 1 because we ignore first col
-                                        src_idx = player_row * (len(self.bs_keys) - 1) + self.bs_keys.index(label) - 1
-                                    if src_idx is not None:
-                                        targ_idx = words_so_far + num_start + k
-                                        if targ_idx >= len(entry["summary"]) or entry["summary"][targ_idx] != word:
-                                            targ_idx = self.fix_target_idx(entry["summary"], targ_idx, word)
-                                        # print word, rulsrcs[i][src_idx], entry["summary"][words_so_far + num_start + k]
-                                        if targ_idx is None:
-                                            skipped += 1
-                                        else:
-                                            assert rulsrcs[i][src_idx] == word and entry["summary"][targ_idx] == word
-                                            links.append((src_idx, targ_idx))
-
-                words_so_far += len(tokes)
-            train_links.append(links)
-        print("SKIPPED", skipped)
-
-        return train_links
+        return (trdata, valdata, testdata)
 
 
-loader = loader("train.json")
+# class SelectorLoader(Loader):
+#     def __init__(self, folder="boxscore-data", dataset="rotowire"):
+#         super(SelectorLoader, self).__init__(folder, dataset)
+#
+#     def handle_word(self, word):
+#         if word not in self.word2index:
+#             self.word2index[word] = self.n_words
+#             self.word2count[word] = 1
+#             self.index2word[self.n_words] = word
+#             self.n_words += 1
+#         else:
+#             self.word2count[word] += 1
+#         return self.word2index[word]
+#
+#     def box_preproc2(self):
+#         """
+#         just gets src for now
+#         """
+#         srcs = [[] for i in range(2 * self.NUM_PLAYERS + 2)]
+#
+#         for entry in self.trdata:
+#             home_players, vis_players = self.get_player_idxs(entry)
+#             for ii, player_list in enumerate([home_players, vis_players]):
+#                 for j in range(self.NUM_PLAYERS):
+#                     src_j = []
+#                     player_key = player_list[j] if j < len(
+#                         player_list) else None
+#                     for k, key in enumerate(self.bs_keys):
+#                         rulkey = key.split('-')[1]
+#                         val = entry["box_score"][rulkey][player_key] if player_key is not None else "N/A"
+#                         src_j.append(val)
+#                     srcs[ii * self.NUM_PLAYERS + j].append(src_j)
+#
+#             home_src, vis_src = [], []
+#             # required for now, so that linescores can be processed together with boxscores
+#             for k in range(len(self.bs_keys) - len(self.ls_keys)):
+#                 home_src.append("PAD")
+#                 vis_src.append("PAD")
+#
+#             for k, key in enumerate(self.ls_keys):
+#                 home_src.append(entry["home_line"][key])
+#                 vis_src.append(entry["vis_line"][key])
+#
+#             srcs[-2].append(home_src)
+#             srcs[-1].append(vis_src)
+#
+#         return srcs
+#
+#     def preproc_datasets(self):
+#         srcs = self.box_preproc2()
+#         lsrcs = []
+#         bs_len = len(self.bs_keys)
+#         records = list()
+#
+#         # maps from a num-rows length list of lists of ntrain to an ntrain-length list of concatenated rows
+#         for i in range(len(srcs[0])):
+#             src_i = []
+#             for j in range(len(srcs)):
+#                 src_i.extend(srcs[j][i])
+#             lsrcs.append(src_i)
+#
+#         for sample in lsrcs:
+#             row = list()
+#             for i in range(0, len(sample), bs_len):
+#                 entity = sample[i]
+#                 values = sample[i + 1:i + bs_len]
+#
+#                 if entity != "PAD":  # parse as boxscore data
+#                     for value, type_ in zip(values, self.bs_keys[1:]):  # don't use PLAYER_NAME as value
+#                         row.append((self.handle_word(type_), self.handle_word(entity), self.handle_word(value)))
+#                 else:  # parse linescore data
+#                     entity = sample[i + bs_len - 1]  # TEAM-NAME
+#                     values = sample[i + bs_len - len(self.ls_keys):i + bs_len + 1]  # ignore the padded entries
+#                     for value, type_ in zip(values, self.ls_keys):
+#                         row.append((self.handle_word(type_), self.handle_word(entity), self.handle_word(value)))
+#             records.append(row)
+#
+#         return records
+#
+#     def parse_summaries(self):
+#         max_sent_len = 0
+#         for entry in self.trdata:
+#             summ = entry["summary"]
+#             max_sent_len = len(summ) if len(summ) > max_sent_len else max_sent_len
+#             for word in summ:
+#                 self.handle_word(word)
+#
+#         return max_sent_len
+
+
+loader = ExtractorLoader()
