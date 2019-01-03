@@ -8,6 +8,7 @@ from os import path, makedirs
 from abc import ABC, abstractmethod
 import torch
 import tarfile
+import pickle
 
 
 class Loader(ABC):
@@ -42,6 +43,11 @@ class Loader(ABC):
         self.trdata = data[0]
         self.valdata = data[1]
         self.testdata = data[2]
+        self.vocab = data[3]
+        self.labels = data[4]
+
+        self.n_words = len(self.vocab)
+        self.max_len = max(len(self.trdata[0][0]), len(self.valdata[0][0]), len(self.testdata[0][0]))
 
     @abstractmethod
     def load_cached_data(self):
@@ -88,7 +94,10 @@ class ExtractorLoader(Loader):
         testlabels = torch.load(".cache/extractor/testlabels.pt")
         testdata = (testsents, testlens, testentdists, testnumdists, testlabels)
 
-        return (trdata, valdata, testdata)
+        vocab = pickle.load(open(".cache/extractor/vocab.pt", "rb"))
+        labels = pickle.load(open(".cache/extractor/labels.pt", "rb"))
+
+        return (trdata, valdata, testdata, vocab, labels)
 
     def get_ents(self, dat):
         players = set()
@@ -340,7 +349,7 @@ class ExtractorLoader(Loader):
         """
         sent = [vocab[wrd] if wrd in vocab else vocab["UNK"] for wrd in tup[0]]
         sentlen = len(sent)
-        sent.extend([-1] * (max_len - sentlen))
+        sent.extend([0] * (max_len - sentlen))
         for rel in tup[1]:
             ent, num, label, idthing = rel
             sents.append(sent)
@@ -359,7 +368,7 @@ class ExtractorLoader(Loader):
         """
         sent = [vocab[wrd] if wrd in vocab else vocab["UNK"] for wrd in tup[0]]
         sentlen = len(sent)
-        sent.extend([-1] * (max_len - sentlen))
+        sent.extend([0] * (max_len - sentlen))
         # get all the labels for the same rel
         unique_rels = defaultdict(list)
         for rel in tup[1]:
@@ -383,7 +392,7 @@ class ExtractorLoader(Loader):
 
         # append number of labels to labels
         for i, labellist in enumerate(labels):
-            labellist.extend([-1] * (max_num_labels - len(labellist)))
+            labellist.extend([0] * (max_num_labels - len(labellist)))
             labellist.append(labelnums[i])
 
     def get_player_idxs(self, entry):
@@ -415,6 +424,7 @@ class ExtractorLoader(Loader):
                 del word_counter[k]  # will replace w/ unk
         word_counter["UNK"] = 1
         vocab = dict(((wrd, i + 1) for i, wrd in enumerate(word_counter.keys())))
+        vocab["PAD"] = 0
         labelset = set()
         [labelset.update([rel[2] for rel in tup[1]]) for tup in rel_datasets[0]]
         labeldict = dict(((label, i + 1) for i, label in enumerate(labelset)))
@@ -424,8 +434,9 @@ class ExtractorLoader(Loader):
         valsents, vallens, valentdists, valnumdists, vallabels = [], [], [], [], []
         testsents, testlens, testentdists, testnumdists, testlabels = [], [], [], [], []
 
+        print("\n<<<TRAINING>>>")
         max_trlen = max((len(tup[0]) for tup in rel_datasets[0]))
-        print("Maximum training sentence length:", max_trlen)
+        print("Maximum sentence length:", max_trlen)
 
         # do training data
         for tup in rel_datasets[0]:
@@ -454,25 +465,29 @@ class ExtractorLoader(Loader):
             trnumdists = [thing for i, thing in enumerate(trnumdists) if i not in ignore_idxs]
             trlabels = [thing for i, thing in enumerate(trlabels) if i not in ignore_idxs]
 
-        print(len(trsents), "training examples")
+        print("Generated", len(trsents), "training examples!")
 
+        print("\n<<<VALIDATION>>>")
         # do val, which we also consider multilabel
         max_vallen = max((len(tup[0]) for tup in rel_datasets[1]))
+        print("Maximum sentence length:", max_vallen)
         for tup in rel_datasets[1]:
             self.append_multilabeled_data(tup, valsents, vallens, valentdists, valnumdists, vallabels, vocab, labeldict, max_vallen)
 
         self.append_labelnums(vallabels)
 
-        print(len(valsents), "validation examples")
+        print("Generated", len(valsents), "validation examples!")
 
+        print("\n<<<TESTING>>>")
         # do test, which we also consider multilabel
         max_testlen = max((len(tup[0]) for tup in rel_datasets[2]))
+        print("Maximum sentence length:", max_testlen)
         for tup in rel_datasets[2]:
             self.append_multilabeled_data(tup, testsents, testlens, testentdists, testnumdists, testlabels, vocab, labeldict, max_testlen)
 
         self.append_labelnums(testlabels)
 
-        print(len(testsents), "test examples")
+        print("Generated", len(testsents), "test examples!")
 
         # create tensors and save to disk
         if not path.exists(".cache/extractor"):
@@ -514,7 +529,14 @@ class ExtractorLoader(Loader):
         torch.save(testlabels, ".cache/extractor/testlabels.pt")
         testdata = (testsents, testlens, testentdists, testnumdists, testlabels)
 
-        return (trdata, valdata, testdata)
+        # write dicts
+        revvocab = dict(((v, k) for k, v in vocab.items()))
+        revlabels = dict(((v, k) for k, v in labeldict.items()))
+
+        pickle.dump(revvocab, open(".cache/extractor/vocab.pt", "wb"))
+        pickle.dump(revlabels, open(".cache/extractor/labels.pt", "wb"))
+
+        return (trdata, valdata, testdata, revvocab, revlabels)
 
 
 # class SelectorLoader(Loader):
@@ -605,6 +627,3 @@ class ExtractorLoader(Loader):
 #                 self.handle_word(word)
 #
 #         return max_sent_len
-
-
-loader = ExtractorLoader()
