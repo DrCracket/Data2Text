@@ -11,6 +11,7 @@ nltk = "*"
 tabulate = "*"
 numpy = "*"
 word2number = "*"
+pytorch-ignite = "*"
 
 [requires]
 python_version = "3.7"
