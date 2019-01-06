@@ -9,13 +9,6 @@ from ignite.metrics import Accuracy, Recall
 from data_utils import ExtractorDataset
 
 
-class MarginalNLLLoss(nn.Module):
-    def forward(self, x, y):
-        # calculate the log on all true labels
-        logs = torch.where(y == 1, x.log(), torch.tensor([0], dtype=torch.float))
-        return -logs.mean()
-
-
 class Extractor(nn.Module):
     def __init__(self, word_input_size, dist_input_size, word_hidden_size=200, dist_hidden_size=100, num_filters=200, num_types=40, dropout=0.5):
         super().__init__()
@@ -104,7 +97,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
         optimizer.zero_grad()
         b_sents, b_ents, b_nums, b_labs = batch
         y_pred = extractor(b_sents, b_ents, b_nums)
-        loss = MarginalNLLLoss()(y_pred, b_labs)
+        loss = F.binary_cross_entropy(y_pred, b_labs)
         loss.backward()
         torch.nn.utils.clip_grad_value_(extractor.parameters(), clip)
         optimizer.step()
@@ -158,7 +151,7 @@ def eval_extractor(extractor, test=False):
         with torch.no_grad():
             b_sents, b_ents, b_nums, b_labs = batch
             y_pred = extractor(b_sents, b_ents, b_nums)
-            loss = MarginalNLLLoss()(y_pred, b_labs)
+            loss = F.binary_cross_entropy(y_pred, b_labs)
 
             # transform the multi-label one-hot labels
             idxs_pred = y_pred.argmax(dim=1)
