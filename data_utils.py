@@ -1,12 +1,9 @@
 from json import loads
 from collections import Counter, OrderedDict
-from math import floor
-from random import shuffle
 from nltk import sent_tokenize
 from word2number import w2n
 from os import path, makedirs
 from torch.utils.data.dataset import Dataset
-from abc import abstractmethod
 import torch
 import tarfile
 import pickle
@@ -18,7 +15,15 @@ class DefaultListOrderedDict(OrderedDict):
         return self[k]
 
 
-class BoxScoreDataset(Dataset):
+class ExtractorDataset(Dataset):
+    prons = set(["he", "He", "him", "Him", "his", "His", "they",
+                 "They", "them", "Them", "their", "Their"])  # leave out "it"
+    singular_prons = set(["he", "He", "him", "Him", "his", "His"])
+    plural_prons = set(["they", "They", "them", "Them", "their", "Their"])
+    number_words = set(["one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+                        "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+                        "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
+                        "sixty", "seventy", "eighty", "ninety", "hundred", "thousand"])
     bs_keys = ["PLAYER-PLAYER_NAME", "PLAYER-START_POSITION", "PLAYER-MIN", "PLAYER-PTS",
                "PLAYER-FGM", "PLAYER-FGA", "PLAYER-FG_PCT", "PLAYER-FG3M", "PLAYER-FG3A",
                "PLAYER-FG3_PCT", "PLAYER-FTM", "PLAYER-FTA", "PLAYER-FT_PCT", "PLAYER-OREB",
@@ -28,25 +33,23 @@ class BoxScoreDataset(Dataset):
     ls_keys = ["TEAM-PTS_QTR1", "TEAM-PTS_QTR2", "TEAM-PTS_QTR3", "TEAM-PTS_QTR4",
                "TEAM-PTS", "TEAM-FG_PCT", "TEAM-FG3_PCT", "TEAM-FT_PCT", "TEAM-REB",
                "TEAM-AST", "TEAM-TOV", "TEAM-WINS", "TEAM-LOSSES", "TEAM-CITY", "TEAM-NAME"]
-
     NUM_PLAYERS = 13
+    sents = None
+    entdists = None
+    numdists = None
+    labels = None
+    idx2word = None
+    idx2type = None
+    stats = None
+    entshift = 0
+    numshift = 0
+    max_dist = 0
+    n_words = 0
+    n_types = 0
 
-    def __init__(self, set_type, folder, dataset):
+    def __init__(self, set_type, folder="boxscore-data", dataset="rotowire"):
         super().__init__()
-        assert(set_type in ["train", "valid", "test"])
-
-        try:
-            self.data = self.load_cached_sets()
-        except FileNotFoundError:
-            print(f"Failed to load cached {set_type} set")
-            path = f"{folder}/{dataset}.tar.bz2"
-            print(f"Generating train, valid and test sets from {path}...")
-
-            with tarfile.open(path, 'r:bz2') as f:
-                trdata = loads(f.extractfile(f"{dataset}/train.json").read())
-                valdata = loads(f.extractfile(f"{dataset}/valid.json").read())
-                testdata = loads(f.extractfile(f"{dataset}/test.json").read())
-                self.data = self.preproc_datasets(trdata, valdata, testdata)
+        self.load_data(set_type, folder, dataset)
 
     def __getitem__(self, idx):
         return (self.sents[idx], self.entdists[idx], self.numdists[idx], self.labels[idx])
@@ -54,69 +57,28 @@ class BoxScoreDataset(Dataset):
     def __len__(self):
         return (len(self.sents))
 
-    @abstractmethod
-    def load_cached_sets(self):
-        pass
+    def load_data(self, set_type, folder, dataset):
+        try:
+            self.sents = torch.load(f".cache/extractor/{set_type}_sents.pt")
+            self.entdists = torch.load(f".cache/extractor/{set_type}_entdists.pt")
+            self.numdists = torch.load(f".cache/extractor/{set_type}_numdists.pt")
+            self.labels = torch.load(f".cache/extractor/{set_type}_labels.pt")
 
-    @abstractmethod
-    def preproc_datasets(self):
-        pass
+            self.idx2word = pickle.load(open(".cache/extractor/vocab.pt", "rb"))
+            self.idx2type = pickle.load(open(".cache/extractor/labels.pt", "rb"))
+            self.stats = pickle.load(open(".cache/extractor/stats.pt", "rb"))
 
+        except FileNotFoundError:
+            print(f"Failed to load cached {set_type} set")
+            # we need to load some data of the train set to compute stats that are relevant for the other sets
+            if set_type != "train":
+                try:
+                    self.stats = pickle.load(open(".cache/extractor/stats.pt", "rb"))
+                except FileNotFoundError:
+                    _, _, _, self.stats = self.preproc_dataset("train", folder, dataset)
 
-class ExtractorDataset(BoxScoreDataset):
-    prons = set(["he", "He", "him", "Him", "his", "His", "they",
-                 "They", "them", "Them", "their", "Their"])  # leave out "it"
-    singular_prons = set(["he", "He", "him", "Him", "his", "His"])
-    plural_prons = set(["they", "They", "them", "Them", "their", "Their"])
-
-    number_words = set(["one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-                        "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
-                        "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
-                        "sixty", "seventy", "eighty", "ninety", "hundred", "thousand"])
-
-    def __init__(self, set_type, folder="boxscore-data", dataset="rotowire"):
-        super().__init__(set_type, folder, dataset)
-
-        sets, self.idx2word, self.idx2type = self.data
-        self.sents, self.entdists, self.numdists, self.labels = sets[set_type]
-
-        self.n_words = len(self.idx2word)
-        self.n_types = len(self.idx2type)
-
-        _, trentdists, trnumdists, _ = sets["train"]
-
-        # get the minimum (negative) and maximum distance that occurs in the train set
-        min_entd, max_entd = trentdists.min(), trentdists.max()
-        min_numd, max_numd = trnumdists.min(), trnumdists.max()
-
-        # clamp values so no other distances except the ones in the train set occur
-        self.entdists.clamp(min_entd, max_entd)
-        self.numdists.clamp(min_numd, max_numd)
-
-        # shift values to eliminate negative numbers
-        self.entdists -= min_entd
-        self.numdists -= min_numd
-
-        # save shifted number to shift back when a content plan is generated
-        self.entshift = min_entd
-        self.numshift = min_numd
-
-        # the number of entries the distance embedding has to have
-        self.max_dist = max(trentdists.max(), trnumdists.max()) - min(trentdists.min(), trnumdists.min()) + 1
-
-    def load_cached_sets(self):
-        sets = {}
-        for prefix, name in (("tr", "train"), ("val", "valid"), ("test", "test")):
-            sents = torch.load(f".cache/extractor/{prefix}sents.pt")
-            entdists = torch.load(f".cache/extractor/{prefix}entdists.pt")
-            numdists = torch.load(f".cache/extractor/{prefix}numdists.pt")
-            labels = torch.load(f".cache/extractor/{prefix}labels.pt")
-
-            sets[name] = (sents, entdists, numdists, labels)
-        idx2word = pickle.load(open(".cache/extractor/vocab.pt", "rb"))
-        idx2type = pickle.load(open(".cache/extractor/labels.pt", "rb"))
-
-        return (sets, idx2word, idx2type)
+            type_data, self.idx2word, self.idx2type, self.stats = self.preproc_dataset(set_type, folder, dataset, self.stats)
+            self.sents, self.entdists, self.numdists, self.labels = type_data
 
     def get_ents(self, dat):
         players = set()
@@ -231,7 +193,7 @@ class ExtractorDataset(BoxScoreDataset):
                 j = 1
                 while i + j < len(sent) and sent[i + j] in self.number_words and not self.annoying_number_word(sent, i + j):
                     j += 1
-                    sent_nums.append((i, i + j, w2n.word_to_num(" ".join(sent[i:i + j]))))
+                sent_nums.append((i, i + j, w2n.word_to_num(" ".join(sent[i:i + j]))))
                 i += j
             else:
                 i += 1
@@ -332,40 +294,23 @@ class ExtractorDataset(BoxScoreDataset):
                 candrels.append((tokes, rels))
         return candrels
 
-    def get_candidate_rels(self, trdata, valdata, testdata):
-        all_ents, players, teams, cities = self.get_ents(trdata)
+    def get_candidate_rels(self, dataset):
+        all_ents, players, teams, cities = self.get_ents(dataset["train"])
 
-        extracted_stuff = []
-        for dataset in (trdata, valdata, testdata):
+        extracted_stuff = {}
+        for type_ in ["train", "valid", "test"]:
             nugz = []
-            for i, entry in enumerate(dataset):
+            for i, entry in enumerate(dataset[type_]):
                 summ = " ".join(entry['summary'])
                 self.append_candidate_rels(entry, summ, all_ents, self.prons, players, teams, cities, nugz)
 
-            extracted_stuff.append(nugz)
+            extracted_stuff[type_] = nugz
 
         del all_ents
         del players
         del teams
         del cities
         return extracted_stuff
-
-    def append_to_data(self, tup, sents, entdists, numdists, labels, vocab, labeldict, max_len):
-        """
-        tup is (sent, [rels]);
-        each rel is ((ent_start, ent_ent, ent_str), (num_start, num_end, num_str), label)
-        """
-        sent = [vocab[wrd] if wrd in vocab else vocab["UNK"] for wrd in tup[0]]
-        sentlen = len(sent)
-        sent.extend([0] * (max_len - sentlen))
-        for rel in tup[1]:
-            ent, num, label, idthing = rel
-            sents.append(sent)
-            ent_dists = [j - ent[0] if j < ent[0] else j - ent[1] + 1 if j >= ent[1] else 0 for j in range(max_len)]
-            entdists.append(ent_dists)
-            num_dists = [j - num[0] if j < num[0] else j - num[1] + 1 if j >= num[1] else 0 for j in range(max_len)]
-            numdists.append(num_dists)
-            labels.append(labeldict[label])
 
     def append_multilabeled_data(self, tup, sents, entdists, numdists, labels, vocab, labeldict, max_len):
         """
@@ -410,28 +355,20 @@ class ExtractorDataset(BoxScoreDataset):
                     num_vis += 1
         return home_players, vis_players
 
-    def save_as_tensors(self, sents, entdists, numdists, labels, max_labels, prefix):
-        sents = torch.tensor(sents)
-        entdists = torch.tensor(entdists)
-        numdists = torch.tensor(numdists)
+    def preproc_dataset(self, set_type, folder, dataset_name, train_stats=None):
+        location = f"{folder}/{dataset_name}.tar.bz2"
 
-        # encode labels one hot style
-        one_hot_labels = torch.zeros(len(sents), max_labels)
-        for idx, labels in enumerate(labels):
-            one_hot_labels[idx][labels] = 1
-        torch.save(sents, f".cache/extractor/{prefix}sents.pt")
-        torch.save(entdists, f".cache/extractor/{prefix}entdists.pt")
-        torch.save(numdists, f".cache/extractor/{prefix}numdists.pt")
-        torch.save(one_hot_labels, f".cache/extractor/{prefix}labels.pt")
-        data = (sents, entdists, numdists, one_hot_labels)
+        with tarfile.open(location, 'r:bz2') as f:
+            dataset = {}
+            for type_ in ["train", "valid", "test"]:
+                dataset[type_] = loads(f.extractfile(f"{dataset_name}/{type_}.json").read())
 
-        return data
+        extracted_rel_tups = self.get_candidate_rels(dataset)
 
-    def preproc_datasets(self, trdata, valdata, testdata, multilabel_train=True, nonedenom=0):
-        rel_datasets = self.get_candidate_rels(trdata, valdata, testdata)
         # make vocab and get labels
         word_counter = Counter()
-        [word_counter.update(tup[0]) for tup in rel_datasets[0]]
+        for tup in extracted_rel_tups["train"]:
+            word_counter.update(tup[0])
         for k in list(word_counter.keys()):
             if word_counter[k] < 2:
                 del word_counter[k]  # will replace w/ unk
@@ -440,75 +377,73 @@ class ExtractorDataset(BoxScoreDataset):
         vocab["PAD"] = 0
         labelset = set()
         # only use the labels that occur in the training dataset
-        [labelset.update([rel[2] for rel in tup[1]]) for tup in rel_datasets[0]]
+        for tup in extracted_rel_tups["train"]:
+            labelset.update([rel[2] for rel in tup[1]])
         labeldict = dict(((label, i) for i, label in enumerate(labelset)))
 
-        # save stuff
-        trsents, trentdists, trnumdists, trlabels = [], [], [], []
-        valsents, valentdists, valnumdists, vallabels = [], [], [], []
-        testsents, testentdists, testnumdists, testlabels = [], [], [], []
+        print(f"Generating {set_type} examples from {location}...")
+        sents, entdists, numdists, labels = [], [], [], []
+        max_len = max((len(tup[0]) for tup in extracted_rel_tups[set_type]))
+        for tup in extracted_rel_tups[set_type]:
+            self.append_multilabeled_data(tup, sents, entdists, numdists, labels, vocab, labeldict, max_len)
 
-        print("\nGenerating training examples...")
-        max_trlen = max((len(tup[0]) for tup in rel_datasets[0]))
+        print(f"Generated {len(sents)} {set_type} examples!")
 
-        # do training data
-        for tup in rel_datasets[0]:
-            if multilabel_train:
-                self.append_multilabeled_data(tup, trsents, trentdists, trnumdists, trlabels, vocab, labeldict, max_trlen)
-            else:
-                self.append_to_data(tup, trsents, trentdists, trnumdists, trlabels, vocab, labeldict, max_trlen)
+        # create tensors from lists
+        sents_ts = torch.tensor(sents)
+        entdists_ts = torch.tensor(entdists)
+        numdists_ts = torch.tensor(numdists)
 
-        if nonedenom > 0:
-            # don't keep all the NONE labeled things
-            none_idxs = [i for i, labellist in enumerate(trlabels) if labellist[0] == labeldict["NONE"]]
-            shuffle(none_idxs)
-            # allow at most 1/(nonedenom+1) of NONE-labeled
-            num_to_keep = int(floor(float(len(trlabels) - len(none_idxs)) / nonedenom))
-            print("Originally", len(trlabels), "training examples")
-            print("Keeping", num_to_keep, "NONE-labeled examples")
-            ignore_idxs = set(none_idxs[num_to_keep:])
+        # encode labels one hot style
+        labels_ts = torch.zeros(len(sents), len(labeldict))
+        for idx, labels in enumerate(labels):
+            labels_ts[idx][labels] = 1
 
-            # get rid of most of the NONE-labeled examples
-            trsents = [thing for i, thing in enumerate(trsents) if i not in ignore_idxs]
-            trentdists = [thing for i, thing in enumerate(trentdists) if i not in ignore_idxs]
-            trnumdists = [thing for i, thing in enumerate(trnumdists) if i not in ignore_idxs]
-            trlabels = [thing for i, thing in enumerate(trlabels) if i not in ignore_idxs]
+        if set_type != "train":
+            # get the minimum (negative) and maximum distances that occur in the train set
+            min_entd, max_entd = train_stats["min_entd"], train_stats["max_entd"]
+            min_numd, max_numd = train_stats["min_numd"], train_stats["max_numd"]
 
-        print("Generated", len(trsents), "training examples!")
+            # clamp values so no other distances except the ones in the train set occur
+            entdists_ts.clamp(min_entd, max_entd)
+            numdists_ts.clamp(min_numd, max_numd)
+        else:  # the current set_type is "train" so we don't need the tensors as parameters
+            min_entd, max_entd = entdists_ts.min().item(), entdists_ts.max().item()
+            min_numd, max_numd = numdists_ts.min().item(), numdists_ts.max().item()
 
-        print("\nGenerating validation examples...")
-        # do val, which we also consider multilabel
-        max_vallen = max((len(tup[0]) for tup in rel_datasets[1]))
-        for tup in rel_datasets[1]:
-            self.append_multilabeled_data(tup, valsents, valentdists, valnumdists, vallabels, vocab, labeldict, max_vallen)
+        # shift values to eliminate negative numbers
+        entdists_ts -= min_entd
+        numdists_ts -= min_numd
 
-        print("Generated", len(valsents), "validation examples!")
+        # save shifted number to shift back when a content plan is generated
+        entshift = min_entd
+        numshift = min_numd
 
-        print("\nGenerating test examples...")
-        # do test, which we also consider multilabel
-        max_testlen = max((len(tup[0]) for tup in rel_datasets[2]))
-        for tup in rel_datasets[2]:
-            self.append_multilabeled_data(tup, testsents, testentdists, testnumdists, testlabels, vocab, labeldict, max_testlen)
+        # the number of entries the distance embedding has to have
+        max_dist = max(max_entd, max_numd) - min(min_entd, min_numd) + 1
+        n_words = len(vocab)
+        n_types = len(labeldict)
 
-        print("Generated", len(testsents), "test examples!")
+        # write dicts, lists and tensors to disk
+        idx2word = dict(((v, k) for k, v in vocab.items()))
+        idx2type = dict(((v, k) for k, v in labeldict.items()))
+        stats = {"entshift": entshift, "numshift": numshift, "max_dist": max_dist,
+                 "min_entd": min_entd, "max_entd": max_entd, "min_numd": min_numd,
+                 "max_numd": max_numd, "n_words": n_words, "n_types": n_types}
 
-        # create tensors and save to disk
         if not path.exists(".cache/extractor"):
             makedirs(".cache/extractor")
 
-        trdata = self.save_as_tensors(trsents, trentdists, trnumdists, trlabels, len(labeldict), "tr")
-        valdata = self.save_as_tensors(valsents, valentdists, valnumdists, vallabels, len(labeldict), "val")
-        testdata = self.save_as_tensors(testsents, testentdists, testnumdists, testlabels, len(labeldict), "test")
-        sets = {"train": trdata, "valid": valdata, "test": testdata}
-
-        # write dicts
-        idx2word = dict(((v, k) for k, v in vocab.items()))
-        idx2type = dict(((v, k) for k, v in labeldict.items()))
+        torch.save(sents_ts, f".cache/extractor/{set_type}_sents.pt")
+        torch.save(entdists_ts, f".cache/extractor/{set_type}_entdists.pt")
+        torch.save(numdists_ts, f".cache/extractor/{set_type}_numdists.pt")
+        torch.save(labels_ts, f".cache/extractor/{set_type}_labels.pt")
 
         pickle.dump(idx2word, open(".cache/extractor/vocab.pt", "wb"))
         pickle.dump(idx2type, open(".cache/extractor/labels.pt", "wb"))
+        pickle.dump(stats, open(".cache/extractor/stats.pt", "wb"))
 
-        return (sets, idx2word, idx2type)
+        return (sents_ts, entdists_ts, numdists_ts, labels_ts), idx2word, idx2type, stats
 
 
 # class SelectorLoader(Loader):
