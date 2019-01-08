@@ -3,49 +3,126 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torch.utils.data import DataLoader
 from ignite.engine import Engine, Events
 from ignite.metrics import Accuracy, Recall
 from data_utils import ExtractorDataset
+from abc import abstractmethod, ABC
 
 
-class Extractor(nn.Module):
-    def __init__(self, word_input_size, dist_input_size, word_hidden_size=200, dist_hidden_size=100, num_filters=200, num_types=40, dropout=0.5):
+class Extractor(nn.Module, ABC):
+    def __init__(self, word_input_size, dist_input_size, word_hidden_size, dist_hidden_size):
         super().__init__()
-        conv_width = word_hidden_size + 2 * dist_hidden_size
 
         self.word_embedding = nn.Embedding(word_input_size, word_hidden_size)
         self.dist_embedding = nn.Embedding(dist_input_size, dist_hidden_size)
 
-        self.mask_conv2 = nn.Conv2d(1, num_filters, (2, conv_width), padding=(1, 0), bias=False)
-        self.conv_kernel2 = nn.Sequential(
-            nn.Conv2d(1, num_filters, (2, conv_width), padding=(1, 0)),
-            nn.ReLU())
+    @abstractmethod
+    def forward(self, sents, entdists, numdists):
+        pass
 
-        self.mask_conv3 = nn.Conv2d(1, num_filters, (3, conv_width), padding=(2, 0), bias=False)
-        self.conv_kernel3 = nn.Sequential(
-            nn.Conv2d(1, num_filters, (3, conv_width), padding=(2, 0)),
-            nn.ReLU())
+    def extract_relations(self, dataset):
+        relations = []
 
-        self.mask_conv5 = nn.Conv2d(1, num_filters, (5, conv_width), padding=(4, 0), bias=False)
-        self.conv_kernel5 = nn.Sequential(
-            nn.Conv2d(1, num_filters, (5, conv_width), padding=(4, 0)),
-            nn.ReLU())
+        for sent, entdist, numdist, _ in dataset:
+            prediction = self(sent.unsqueeze(0), entdist.unsqueeze(0), numdist.unsqueeze(0))
+            type_ = dataset.idx2type[prediction.argmax().item()]
+            entity = []
+            number = []
+            for word, ent, num in zip(sent, entdist, numdist):
+                if ent.item() + dataset.entshift == 0:
+                    entity.append(dataset.idx2word[word.item()])
+                if num.item() + dataset.numshift == 0:
+                    number.append(dataset.idx2word[word.item()])
+            relations.append([" ".join(entity), " ".join(number), type_])
+        return relations
+
+
+class LSTMExtractor(Extractor):
+    def __init__(self, word_input_size, dist_input_size, word_hidden_size=200, dist_hidden_size=100,
+                 lstm_hidden_size=500, mlp_hidden_size=700, num_types=40, dropout=0.5):
+
+        super().__init__(word_input_size, dist_input_size, word_hidden_size, dist_hidden_size)
+        self.lstm_hidden_size = lstm_hidden_size
+        input_width = word_hidden_size + 2 * dist_hidden_size
+
+        self.rnn = nn.LSTM(input_width, lstm_hidden_size, batch_first=True, bidirectional=True)
 
         self.relu_mlp = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(3 * num_filters, 500),
+            nn.AdaptiveMaxPool2d((1, None)),
+            nn.Linear(2 * lstm_hidden_size, mlp_hidden_size),
             nn.ReLU(),
             nn.Dropout(dropout))
 
         self.decoder = nn.Sequential(
-            nn.Linear(500, num_types),
+            nn.Linear(mlp_hidden_size, num_types),
             nn.Softmax(dim=2))
 
     def forward(self, sents, entdists, numdists):
         emb_sents = self.word_embedding(sents)
         emb_entdists = self.dist_embedding(entdists)
         emb_numdists = self.dist_embedding(numdists)
+        emb_cat = torch.cat((emb_sents, emb_entdists, emb_numdists), 2)
+
+        # pack the padded sequence, use sents to calculate sequence lenth for
+        # each batch element, because  entdist and numdist aren't zeropadded
+        lengths = (sents > 0).sum(dim=1)
+        # sort length tensor and batch  for pad_packed_sequence
+        lengths, perm_idx = lengths.sort(descending=True)
+        emb_cat = emb_cat[perm_idx]
+
+        lstm_input = pack_padded_sequence(emb_cat, lengths, batch_first=True)
+        lstm_output, _ = self.rnn(lstm_input)
+        padded_output, _ = pad_packed_sequence(lstm_output, batch_first=True)
+
+        # restore original ordering
+        _, unperm_idx = perm_idx.sort()
+        sorted_output = padded_output[unperm_idx]
+
+        mlp_output = self.relu_mlp(sorted_output)
+        soft_output = self.decoder(mlp_output)
+
+        return soft_output.squeeze(1)
+
+
+class CNNExtractor(Extractor):
+    def __init__(self, word_input_size, dist_input_size, word_hidden_size=200, dist_hidden_size=100,
+                 num_filters=200, mlp_hidden_size=500, num_types=40, dropout=0.5):
+
+        super().__init__(word_input_size, dist_input_size, word_hidden_size, dist_hidden_size)
+        input_width = word_hidden_size + 2 * dist_hidden_size
+
+        self.mask_conv2 = nn.Conv2d(1, num_filters, (2, input_width), padding=(1, 0), bias=False)
+        self.conv_kernel2 = nn.Sequential(
+            nn.Conv2d(1, num_filters, (2, input_width), padding=(1, 0)),
+            nn.ReLU())
+
+        self.mask_conv3 = nn.Conv2d(1, num_filters, (3, input_width), padding=(2, 0), bias=False)
+        self.conv_kernel3 = nn.Sequential(
+            nn.Conv2d(1, num_filters, (3, input_width), padding=(2, 0)),
+            nn.ReLU())
+
+        self.mask_conv5 = nn.Conv2d(1, num_filters, (5, input_width), padding=(4, 0), bias=False)
+        self.conv_kernel5 = nn.Sequential(
+            nn.Conv2d(1, num_filters, (5, input_width), padding=(4, 0)),
+            nn.ReLU())
+
+        self.relu_mlp = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(3 * num_filters, mlp_hidden_size),
+            nn.ReLU(),
+            nn.Dropout(dropout))
+
+        self.decoder = nn.Sequential(
+            nn.Linear(mlp_hidden_size, num_types),
+            nn.Softmax(dim=2))
+
+    def forward(self, sents, entdists, numdists):
+        emb_sents = self.word_embedding(sents)
+        emb_entdists = self.dist_embedding(entdists)
+        emb_numdists = self.dist_embedding(numdists)
+        # add 1 dim for 2d convolution
         emb_cat = torch.cat((emb_sents, emb_entdists, emb_numdists), 2).unsqueeze(1)
 
         # mask padded values
@@ -65,28 +142,13 @@ class Extractor(nn.Module):
 
         return output.squeeze(1)
 
-    def extract_relations(self, dataset):
-        relations = []
 
-        for sent, entdist, numdist, _ in dataset:
-            prediction = self(sent.unsqueeze(0), entdist.unsqueeze(0), numdist.unsqueeze(0))
-            type_ = dataset.idx2type[prediction.argmax().item()]
-            entity = []
-            number = []
-            for word, ent, num in zip(sent, entdist, numdist):
-                if ent.item() + dataset.entshift == 0:
-                    entity.append(dataset.idx2word[word.item()])
-                if num.item() + dataset.numshift == 0:
-                    number.append(dataset.idx2word[word.item()])
-            relations.append([" ".join(entity), " ".join(number), type_])
-        return relations
-
-
-def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000):
+def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000, lstm=False):
+    Model = LSTMExtractor if lstm else CNNExtractor
     data = ExtractorDataset("train")
     loader = DataLoader(data, shuffle=True, batch_size=batch_size)
 
-    extractor = Extractor(data.n_words, data.max_dist, num_types=data.n_types)
+    extractor = Model(data.stats["n_words"], data.stats["max_dist"], num_types=data.stats["n_types"])
     optimizer = optim.SGD(extractor.parameters(), lr=learning_rate)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=decay)
 
@@ -178,17 +240,18 @@ def eval_extractor(extractor, test=False):
     evaluator.run(loader)
 
 
-def get_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000):
+def get_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000, lstm=False):
+    prefix = "lstm" if lstm else "cnn"
     try:
-        print("Trying to load cached extractor model...")
-        extractor = torch.load(".cache/extractor/extractor.pt")
+        print(f"Trying to load cached {prefix} extractor model...")
+        extractor = torch.load(f".cache/extractor/{prefix}_extractor.pt")
         print("Success!")
     except FileNotFoundError:
         print("Failed to locate model.")
-        extractor = train_extractor(batch_size, epochs, learning_rate, decay, log_interval)
-        torch.save(extractor, ".cache/extractor/extractor.pt")
+        extractor = train_extractor(batch_size, epochs, learning_rate, decay, clip, log_interval, lstm)
+        torch.save(extractor, f".cache/extractor/{prefix}_extractor.pt")
 
     return extractor
 
 
-get_extractor()
+get_extractor(lstm=True)
