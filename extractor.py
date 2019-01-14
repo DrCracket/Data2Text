@@ -1,14 +1,26 @@
+###############################################################################
+# Information Extraction Module                                               #
+###############################################################################
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torch.utils.data import DataLoader
 from ignite.engine import Engine, Events
 from ignite.metrics import Accuracy, Recall
-from data_utils import ExtractorDataset
+from data_utils import load_extractor_data
 from abc import abstractmethod, ABC
+from os import path, makedirs
+
+
+class MarginalNLLLoss(nn.Module):
+    """ The loss function proposed by Whiteman et al."""
+    def forward(self, x, y):
+        # calculate the log on all true labels
+        logs = torch.where(y == 1, x.log(), torch.tensor([0], dtype=torch.float))
+        return -logs.mean()
 
 
 class Extractor(nn.Module, ABC):
@@ -23,20 +35,24 @@ class Extractor(nn.Module, ABC):
         pass
 
     def extract_relations(self, dataset):
-        relations = []
+        total_relations = []
 
-        for sent, entdist, numdist, _ in dataset:
-            prediction = self(sent.unsqueeze(0), entdist.unsqueeze(0), numdist.unsqueeze(0))
-            type_ = dataset.idx2type[prediction.argmax().item()]
-            entity = []
-            number = []
-            for word, ent, num in zip(sent, entdist, numdist):
-                if ent.item() + dataset.entshift == 0:
-                    entity.append(dataset.idx2word[word.item()])
-                if num.item() + dataset.numshift == 0:
-                    number.append(dataset.idx2word[word.item()])
-            relations.append([" ".join(entity), " ".join(number), type_])
-        return relations
+        for sents, entdists, numdists, _ in list(dataset.split(dataset.len_entries)):
+            predictions = self.forward(sents, entdists, numdists)
+            relations = []
+            for prediction, sent, entdist, numdist in zip(predictions, sents, entdists, numdists):
+                type_ = dataset.idx2type[prediction.argmax().item()]
+                entity = []
+                number = []
+                for word, ent, num in zip(sent, entdist, numdist):
+                    if ent.item() + dataset.stats["entshift"] == 0:
+                        entity.append(dataset.idx2word[word.item()])
+                    if num.item() + dataset.stats["numshift"] == 0:
+                        number.append(dataset.idx2word[word.item()])
+                relations.append([" ".join(entity), " ".join(number), type_])
+            total_relations.append(relations)
+            break
+        return total_relations
 
 
 class LSTMExtractor(Extractor):
@@ -68,7 +84,7 @@ class LSTMExtractor(Extractor):
         # pack the padded sequence, use sents to calculate sequence lenth for
         # each batch element, because  entdist and numdist aren't zeropadded
         lengths = (sents > 0).sum(dim=1)
-        # sort length tensor and batch  for pad_packed_sequence
+        # sort length tensor and batch  for pad_packed_sequence (reminder: this hacky reordering won't be necessary in pytorch 1.1)
         lengths, perm_idx = lengths.sort(descending=True)
         emb_cat = emb_cat[perm_idx]
 
@@ -145,7 +161,7 @@ class CNNExtractor(Extractor):
 
 def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000, lstm=False):
     Model = LSTMExtractor if lstm else CNNExtractor
-    data = ExtractorDataset("train")
+    data = load_extractor_data("train")
     loader = DataLoader(data, shuffle=True, batch_size=batch_size)
 
     extractor = Model(data.stats["n_words"], data.stats["max_dist"], num_types=data.stats["n_types"])
@@ -154,7 +170,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
 
     print("Training a new extractor...")
 
-    def _update(engine, batch):
+    def update(engine, batch):
         extractor.train()
         optimizer.zero_grad()
         b_sents, b_ents, b_nums, b_labs = batch
@@ -165,7 +181,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
         optimizer.step()
         return loss.item()
 
-    trainer = Engine(_update)
+    trainer = Engine(update)
 
     @trainer.on(Events.ITERATION_COMPLETED)
     def log_training_loss(engine):
@@ -201,10 +217,10 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
 def eval_extractor(extractor, test=False):
     if test:
         used_set = "Test"
-        loader = DataLoader(ExtractorDataset("test"), batch_size=1000)
+        loader = DataLoader(load_extractor_data("test"), batch_size=1000)
     else:
         used_set = "Validation"
-        loader = DataLoader(ExtractorDataset("valid"), batch_size=1000)
+        loader = DataLoader(load_extractor_data("valid"), batch_size=1000)
 
     def _update(engine, batch):
         """Transform the multi-label one-hot labels to multiclass indexes.
@@ -242,16 +258,15 @@ def eval_extractor(extractor, test=False):
 
 def get_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000, lstm=False):
     prefix = "lstm" if lstm else "cnn"
-    try:
+    if path.exists(f"models/{prefix}_extractor.pt"):
         print(f"Trying to load cached {prefix} extractor model...")
-        extractor = torch.load(f".cache/extractor/{prefix}_extractor.pt")
+        extractor = torch.load(f"models/{prefix}_extractor.pt")
         print("Success!")
-    except FileNotFoundError:
+    else:
         print("Failed to locate model.")
+        if not path.exists("models"):
+            makedirs("models")
         extractor = train_extractor(batch_size, epochs, learning_rate, decay, clip, log_interval, lstm)
-        torch.save(extractor, f".cache/extractor/{prefix}_extractor.pt")
+        torch.save(extractor, f"models/{prefix}_extractor.pt")
 
     return extractor
-
-
-get_extractor(lstm=True)
