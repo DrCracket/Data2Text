@@ -1,7 +1,7 @@
 ###############################################################################
-#                Converts RotoWire json data into Markdown                    #
-#                TODO: Add commandline support                                #
-#                TODO: Update to use archive                                  #
+# Converts RotoWire json data into Markdown                                   #
+# TODO: Add commandline support                                               #
+# TODO: Update to use archive                                                 #
 ###############################################################################
 
 from json import loads
@@ -32,7 +32,7 @@ def getBoxScore(game):
     # transpose the table so that each row represents a player
     table = map(list, zip(*table))
     return tabulate(table, header, tablefmt="pipe", numalign="center",
-            stralign="center")
+                    stralign="center")
 
 
 def getLineScore(game, type_):
@@ -54,7 +54,7 @@ def getLineScore(game, type_):
     # transpose the table so that each row represents a team
     table = map(list, zip(*table))
     return tabulate(table, header, tablefmt="pipe", numalign="center",
-            stralign="center")
+                    stralign="center")
 
 
 def getOtherInfo(game):
@@ -72,7 +72,7 @@ def getOtherInfo(game):
     # transpose the table
     table = map(list, zip(*table))
     return tabulate(table, header, tablefmt="pipe", numalign="center",
-            stralign="center")
+                    stralign="center")
 
 
 def getSummary(game):
@@ -92,12 +92,12 @@ def genDescription(data, file_, index):
     string"""
 
     game = data[index]
-    filename = "b_game_{}.md".format(str(index+1))
+    filename = "b_game_{}.md".format(str(index + 1))
     description = str()
 
     # print the title
     description += "# Basketball Game #{} from {}\n\n\n".format(
-        str(index+1), file_)
+        str(index + 1), file_)
 
     # box-scores
     description += "## Box-Scores\n\n"
