@@ -635,9 +635,9 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
         _, _, vocab, _ = preproc_planner_data("train", extractor, folder, dataset)
 
     # used by the planner to identify indices of special words
-    stats["BOS_index"] = torch.tensor([vocab[BOS_WORD]])
-    stats["EOS_index"] = torch.tensor([vocab[EOS_WORD]])
-    stats["PAD_index"] = torch.tensor([vocab[PAD_WORD]])
+    stats["BOS_INDEX"] = torch.tensor([vocab[BOS_WORD]])
+    stats["EOS_INDEX"] = torch.tensor([vocab[EOS_WORD]])
+    stats["PAD_INDEX"] = torch.tensor([vocab[PAD_WORD]])
 
     # create the folder for the cached files if it does not exist
     if not path.exists(".cache/planner"):
