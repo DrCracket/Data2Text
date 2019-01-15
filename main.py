@@ -3,8 +3,9 @@
 # and Text Generation Module
 ###############################################################################
 
-import extractor
-# import planner
+from extractor import get_extractor, eval_extractor
+from planner import train_planner
 
-extractor.get_extractor()
-# planner.train_planner(extractor)
+extractor = get_extractor()
+eval_extractor(extractor, test=True)
+train_planner(extractor)
