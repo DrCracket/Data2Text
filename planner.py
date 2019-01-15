@@ -128,7 +128,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_
         hidden, cell = content_planner.init_hidden(records)
         content_plan_iterator = iter(content_plan.t())
         input_index = next(content_plan_iterator)
-        loss = 0
+        loss = torch.tensor([0], dtype=torch.float, requires_grad=True)
 
         if use_teacher_forcing:
             # Teacher forcing: Feed the target as the next input
