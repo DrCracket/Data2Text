@@ -51,7 +51,6 @@ class Extractor(nn.Module, ABC):
                         number.append(dataset.idx2word[word.item()])
                 relations.append([" ".join(entity), " ".join(number), type_])
             total_relations.append(relations)
-            break
         return total_relations
 
 
