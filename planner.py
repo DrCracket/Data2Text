@@ -128,7 +128,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_
         hidden, cell = content_planner.init_hidden(records)
         content_plan_iterator = iter(content_plan.t())
         input_index = next(content_plan_iterator)
-        loss = torch.tensor([0], dtype=torch.float, requires_grad=True)
+        loss = 0
 
         if use_teacher_forcing:
             # Teacher forcing: Feed the target as the next input
@@ -152,9 +152,10 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_
                 if input_index.item() == data.stats["EOS_INDEX"]:
                     break
 
-        print(loss)
-        loss.backward()
-        optimizer.step()
+        # in rare cases content plan is empty, then the loss remains an int
+        if not isinstance(loss, int):
+            loss.backward()
+            optimizer.step()
         return loss.item() / len(content_plan)  # normalize loss for logging
 
     trainer = Engine(_update)
