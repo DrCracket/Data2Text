@@ -624,7 +624,7 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     pre_content_plans = extractor.extract_relations(extr_dataset)
     # add two to MAX_RECORDS for BOS and EOS records
     records = torch.zeros(len(raw_dataset), MAX_RECORDS + 2, 4, dtype=torch.long)
-    content_plans = torch.zeros(len(raw_dataset), MAX_RECORDS, dtype=torch.long)
+    content_plans = torch.zeros(len(raw_dataset), MAX_RECORDS + 2, dtype=torch.long)
     stats = dict()
 
     if corpus_type == "train":  # if corpus is train corpus generate vocabulary
@@ -637,18 +637,19 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     # used by the planner to identify indices of special words
     stats["BOS_index"] = torch.tensor([vocab[BOS_WORD]])
     stats["EOS_index"] = torch.tensor([vocab[EOS_WORD]])
+    stats["PAD_index"] = torch.tensor([vocab[PAD_WORD]])
 
     # create the folder for the cached files if it does not exist
     if not path.exists(".cache/planner"):
         makedirs(".cache/planner")
 
-    for dim1, (raw_entry, pre_content_plan) in enumerate(zip(raw_dataset[0:1], pre_content_plans)):
+    for dim1, (raw_entry, pre_content_plan) in enumerate(zip(raw_dataset, pre_content_plans)):
         # create the records from the dataset
         if corpus_type == "train":  # only update vocab if processed corpus is train corpus
             entry_records, vocab = create_records(raw_entry, vocab)
         else:
             entry_records, _ = create_records(raw_entry)
-        content_plan = list()
+        content_plan = [vocab[BOS_WORD]]  # begin sequence with BOS word
         # for every extracted record in the ie content plan:
         for extr_record in pre_content_plan:
             # get the entity that has the highest string similarity (if the type of the extracted relation isn't NONE)
@@ -666,6 +667,7 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
                         if type_ == record[1] and (value == record[2] or str(w2n.word_to_num(value)) == record[2]):
                             content_plan.append(idx)
                             break
+        content_plan.append(vocab[EOS_WORD])  # end sequence with EOS word
         # translate words to indeces and create tensors
         for entity_records in entry_records.values():
             for dim2, record in entity_records:
