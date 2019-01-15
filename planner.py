@@ -129,6 +129,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_
         content_plan_iterator = iter(content_plan.t())
         input_index = next(content_plan_iterator)
         loss = 0
+        len_sequence = 0
 
         if use_teacher_forcing:
             # Teacher forcing: Feed the target as the next input
@@ -138,6 +139,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_
                 output, hidden, cell = content_planner(
                     input_index, hidden, cell)
                 loss += F.nll_loss(output, record_pointer)
+                len_sequence += 1
                 input_index = record_pointer
 
         else:
@@ -148,6 +150,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_
                 output, hidden, cell = content_planner(
                     input_index, hidden, cell)
                 loss += F.nll_loss(output, record_pointer)
+                len_sequence += 1
                 input_index = output.argmax(dim=1)
                 if input_index.item() == data.stats["EOS_INDEX"]:
                     break
@@ -156,7 +159,10 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_
         if not isinstance(loss, int):
             loss.backward()
             optimizer.step()
-        return loss.item() / len(content_plan)  # normalize loss for logging
+            return loss.item() / len_sequence  # normalize loss for log
+        else:
+            print(content_plan)  # debug where the zero loss comes from
+            return loss
 
     trainer = Engine(_update)
     # save the model every 4 epochs
