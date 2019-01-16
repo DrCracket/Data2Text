@@ -36,7 +36,6 @@ class Extractor(nn.Module, ABC):
 
     def extract_relations(self, dataset):
         total_relations = []
-        debug = 0
 
         for idx, (sents, entdists, numdists, _) in zip(dataset.idx_list, dataset.split(dataset.len_entries)):
             predictions = self.forward(sents, entdists, numdists)
@@ -52,10 +51,6 @@ class Extractor(nn.Module, ABC):
                         number.append(dataset.idx2word[word.item()])
                 relations.append([" ".join(entity), " ".join(number), type_])
             total_relations.append((idx, relations))
-            if debug == 10:
-                break
-            else:
-                debug += 1
         return total_relations
 
 
