@@ -100,7 +100,7 @@ class ContentPlanner(nn.Module):
         Additionally initialize a mask to mask out the padded values of the LSTM inputs."""
 
         self.selected_content = self.select_content(records)
-        self.mask = records.max(dim=2)[0] != 0
+        self.mask = records.max(dim=2)[0] == 0
         # transpose first and second dim, because LSTM expects seq_len first
         hidden = torch.mean(self.selected_content, dim=1, keepdim=True).transpose(0, 1)
         cell = torch.zeros_like(hidden)
