@@ -155,14 +155,9 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_
                 if input_index.item() == data.stats["EOS_INDEX"]:
                     break
 
-        # in rare cases content plan is empty, then the loss remains an int
-        if not isinstance(loss, int):
-            loss.backward()
-            optimizer.step()
-            return loss.item() / len_sequence  # normalize loss for log
-        else:
-            print(content_plan)  # debug where the zero loss comes from
-            return loss
+        loss.backward()
+        optimizer.step()
+        return loss.item() / len_sequence  # normalize loss for log
 
     trainer = Engine(_update)
     # save the model every 4 epochs

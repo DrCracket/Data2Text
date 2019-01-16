@@ -87,8 +87,9 @@ class ExtractorDataset(Dataset):
     idx2type = None
     stats = None
     len_entries = None
+    idx_list = None
 
-    def __init__(self, sents, entdists, numdists, labels, idx2word, idx2type, stats, len_entries):
+    def __init__(self, sents, entdists, numdists, labels, idx2word, idx2type, stats, len_entries, idx_list):
         super().__init__()
         self.sents = sents
         self.entdists = entdists
@@ -98,12 +99,13 @@ class ExtractorDataset(Dataset):
         self.idx2type = idx2type
         self.stats = stats
         self.len_entries = len_entries
+        self.idx_list = idx_list
 
     def __getitem__(self, idx):
         return self.sents[idx], self.entdists[idx], self.numdists[idx], self.labels[idx]
 
     def __len__(self):
-        return (len(self.sents))
+        return len(self.sents)
 
     def split(self, idx):
         return zip(self.sents.split(idx), self.entdists.split(idx), self.numdists.split(idx), self.labels.split(idx))
@@ -478,10 +480,11 @@ def preproc_extractor_data(set_type, folder, dataset_name, train_stats=None):
                 labeldict.append(rel[2])
 
     print(f"Generating {set_type} examples from {location}...")
-    sents, entdists, numdists, labels, len_entries = [], [], [], [], []
+    sents, entdists, numdists, labels, len_entries, idx_list = [], [], [], [], [], []
     max_len = max((len(tup[0]) for entry in extracted_rel_tups[set_type] for tup in entry))
-    for entry in extracted_rel_tups[set_type]:
+    for idx, entry in enumerate(extracted_rel_tups[set_type]):
         append_multilabeled_data(entry, sents, entdists, numdists, labels, vocab, labeldict, max_len, len_entries)
+        idx_list.append(idx)
     print(f"Generated {len(sents)} {set_type} examples!")
 
     # create tensors from lists
@@ -540,10 +543,11 @@ def preproc_extractor_data(set_type, folder, dataset_name, train_stats=None):
     torch.save(numdists_ts, f".cache/extractor/{set_type}_numdists.pt")
     torch.save(labels_ts, f".cache/extractor/{set_type}_labels.pt")
     pickle.dump(len_entries, open(f".cache/extractor/{set_type}_len_entries.pt", "wb"))
+    pickle.dump(idx_list, open(".cache/extractor/{set_type}_idx_list.pt", "wb"))
     pickle.dump(idx2word, open(".cache/extractor/vocab.pt", "wb"))
     pickle.dump(idx2type, open(".cache/extractor/labels.pt", "wb"))
 
-    return (sents_ts, entdists_ts, numdists_ts, labels_ts), idx2word, idx2type, train_stats, len_entries
+    return (sents_ts, entdists_ts, numdists_ts, labels_ts), idx2word, idx2type, train_stats, len_entries, idx_list
 
 
 def add_special_records(records, idx):
@@ -623,9 +627,10 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     extr_dataset = load_extractor_data(corpus_type, folder, dataset)
     pre_content_plans = extractor.extract_relations(extr_dataset)
     # add two to MAX_RECORDS for BOS and EOS records
-    records = torch.zeros(len(raw_dataset), MAX_RECORDS + 2, 4, dtype=torch.long)
-    content_plans = torch.zeros(len(raw_dataset), MAX_RECORDS + 2, dtype=torch.long)
+    records = torch.zeros(len(pre_content_plans), MAX_RECORDS + 2, 4, dtype=torch.long)
+    content_plans = torch.zeros(len(pre_content_plans), MAX_RECORDS + 2, dtype=torch.long)
     stats = dict()
+    print("Assert equal:", len(raw_dataset), len(pre_content_plans))
 
     if corpus_type == "train":  # if corpus is train corpus generate vocabulary
         vocab = Vocab(eos_and_bos=True)
@@ -643,8 +648,8 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     if not path.exists(".cache/planner"):
         makedirs(".cache/planner")
 
-    for dim1, (raw_entry, pre_content_plan) in enumerate(zip(raw_dataset, pre_content_plans)):
-        # create the records from the dataset
+    for dim1, (entry_idx, pre_content_plan) in enumerate(pre_content_plans):
+        raw_entry = raw_dataset[entry_idx]  # load the entry that corresponds to a content plan
         if corpus_type == "train":  # only update vocab if processed corpus is train corpus
             entry_records, vocab = create_records(raw_entry, vocab)
         else:
@@ -698,16 +703,17 @@ def load_extractor_data(corpus_type, folder="boxscore-data", dataset="rotowire")
         numdists = torch.load(f".cache/extractor/{corpus_type}_numdists.pt")
         labels = torch.load(f".cache/extractor/{corpus_type}_labels.pt")
         len_entries = pickle.load(open(f".cache/extractor/{corpus_type}_len_entries.pt", "rb"))
+        idx_list = pickle.load(open(".cache/extractor/{corpus_type}_idx_list.pt", "rb"))
         idx2word = pickle.load(open(".cache/extractor/vocab.pt", "rb"))
         idx2type = pickle.load(open(".cache/extractor/labels.pt", "rb"))
         stats = pickle.load(open(".cache/extractor/stats.pt", "rb"))
 
     except FileNotFoundError:
         print(f"Failed to locate cached {corpus_type} corpus!")
-        type_data, idx2word, idx2type, stats, len_entries = preproc_extractor_data(corpus_type, folder, dataset)
+        type_data, idx2word, idx2type, stats, len_entries, idx_list = preproc_extractor_data(corpus_type, folder, dataset)
         sents, entdists, numdists, labels = type_data
 
-    return ExtractorDataset(sents, entdists, numdists, labels, idx2word, idx2type, stats, len_entries)
+    return ExtractorDataset(sents, entdists, numdists, labels, idx2word, idx2type, stats, len_entries, idx_list)
 
 
 def load_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="rotowire"):
