@@ -40,8 +40,6 @@ class ContentPlanner(nn.Module):
 
         # size = (batch_size) => size = (batch_size x 1)
         index = index.unsqueeze(1)
-        # update the mask with the input index, so that it won't get selected again
-        self.mask = self.mask.scatter_(1, index, 1)
         # size = (batch_size x 1) => size = (batch_size x 1 x hidden_size)
         index = index.unsqueeze(2).repeat(1, 1, self.hidden_size)
         input_ = self.selected_content.gather(1, index)
