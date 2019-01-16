@@ -79,7 +79,7 @@ class ContentPlanner(nn.Module):
         diag_mask = torch.diag(torch.ones(pre_attn.size(1), dtype=torch.uint8))
         # padded values should also be masked out
         # size = (Batch x Records)
-        pad_mask_pre, _ = (records == 0).max(dim=2)
+        pad_mask_pre = records.max(dim=2)[0] == 0
         # size = (Batch x Records x Records)
         pad_mask_pre = pad_mask_pre.unsqueeze(1).repeat(1, records.size(1), 1)
         pad_mask = pad_mask_pre.transpose(1, 2) | pad_mask_pre
