@@ -15,7 +15,7 @@ from data_utils import load_planner_data
 
 
 class ContentPlanner(nn.Module):
-    def __init__(self, max_len, input_size, hidden_size=6):
+    def __init__(self, max_len, input_size, hidden_size=600):
         super(ContentPlanner, self).__init__()
         self.max_len = max_len
         self.hidden_size = hidden_size
