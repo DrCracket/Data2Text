@@ -15,7 +15,7 @@ from data_utils import load_planner_data
 
 
 class ContentPlanner(nn.Module):
-    def __init__(self, max_len, input_size, hidden_size=600):
+    def __init__(self, max_len, input_size, hidden_size=6):
         super(ContentPlanner, self).__init__()
         self.max_len = max_len
         self.hidden_size = hidden_size
@@ -106,7 +106,7 @@ class ContentPlanner(nn.Module):
         return hidden, cell
 
 
-def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_init=0.1, clip=10, teacher_forcing_ratio=0.5, log_interval=100):
+def train_planner(extractor, epochs=25, learning_rate=0.015, decay=0.97, acc_val_init=0.1, clip=10, teacher_forcing_ratio=0.5, log_interval=100):
     data = load_planner_data("train", extractor)
     loader = DataLoader(data, shuffle=True, batch_size=1)  # online learning
 
