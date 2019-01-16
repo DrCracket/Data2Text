@@ -108,7 +108,7 @@ class ContentPlanner(nn.Module):
         return hidden, cell
 
 
-def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_init=0.1, teacher_forcing_ratio=0.5, log_interval=100):
+def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_init=0.1, clip=10, teacher_forcing_ratio=0.5, log_interval=100):
     data = load_planner_data("train", extractor)
     loader = DataLoader(data, shuffle=True, batch_size=1)  # online learning
 
@@ -156,6 +156,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_
                     break
 
         loss.backward()
+        nn.utils.clip_grad_norm_(content_planner.parameters(), clip)
         optimizer.step()
         return loss.item() / len_sequence  # normalize loss for log
 
@@ -191,7 +192,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_
     return content_planner
 
 
-def eval_planner(extractor, content_planner, teacher_forcing_ratio=0.5, test=False):
+def eval_planner(extractor, content_planner, test=False):
     if test:
         used_set = "Test"
         data = load_planner_data("test", extractor)
@@ -211,7 +212,6 @@ def eval_planner(extractor, content_planner, teacher_forcing_ratio=0.5, test=Fal
         nonlocal correct
         nonlocal total
         with torch.no_grad():
-            use_teacher_forcing = True if random() < teacher_forcing_ratio else False
 
             records, content_plan = batch
             hidden, cell = content_planner.init_hidden(records)
@@ -226,10 +226,7 @@ def eval_planner(extractor, content_planner, teacher_forcing_ratio=0.5, test=Fal
                 if record_pointer == output.argmax(dim=1):
                     correct += 1
                 total += 1
-                if use_teacher_forcing:
-                    input_index = record_pointer
-                else:
-                    input_index = output.argmax(dim=1)
+                input_index = output.argmax(dim=1)
 
     evaluator = Engine(update)
 
