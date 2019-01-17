@@ -4,7 +4,7 @@
 ###############################################################################
 
 from extractor import get_extractor
-from planner import train_planner
+from planner import get_planner
 
 extractor = get_extractor()
-train_planner(extractor)
+get_planner(extractor)
