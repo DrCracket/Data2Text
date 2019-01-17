@@ -11,7 +11,9 @@ from random import random
 from torch.utils.data import DataLoader
 from ignite.engine import Engine, Events
 from ignite.handlers import ModelCheckpoint
+from ignite.metrics import Loss
 from data_utils import load_planner_data
+from os import path, makedirs
 
 
 class ContentPlanner(nn.Module):
@@ -106,12 +108,12 @@ class ContentPlanner(nn.Module):
         return hidden, cell
 
 
-def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_init=0.1, clip=10, teacher_forcing_ratio=0.5, log_interval=100):
+def train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.7, log_interval=100):
     data = load_planner_data("train", extractor)
     loader = DataLoader(data, shuffle=True, batch_size=1)  # online learning
 
     content_planner = ContentPlanner(data.records.size(1), len(data.idx2word))
-    optimizer = optim.Adagrad(content_planner.parameters(), lr=learning_rate, lr_decay=decay, initial_accumulator_value=acc_val_init)
+    optimizer = optim.Adagrad(content_planner.parameters(), lr=learning_rate, initial_accumulator_value=acc_val_init)
 
     print("Training a new Content Planner...")
 
@@ -156,7 +158,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_
         loss.backward()
         nn.utils.clip_grad_norm_(content_planner.parameters(), clip)
         optimizer.step()
-        return loss.item() / len_sequence  # normalize loss for log
+        return loss.item() / len_sequence  # normalize loss for logging
 
     trainer = Engine(_update)
     # save the model every 4 epochs
@@ -200,17 +202,13 @@ def eval_planner(extractor, content_planner, test=False):
         data = load_planner_data("test", extractor)
         loader = DataLoader(data, batch_size=1)
 
-    correct = 0
-    total = 0
-
     def update(engine, batch):
         """Update function for the Conent Selection & Planning Module.
         Right now only online learning is supported"""
         content_planner.eval()
-        nonlocal correct
-        nonlocal total
+        outputs = list()
+        labels = list()
         with torch.no_grad():
-
             records, content_plan = batch
             hidden, cell = content_planner.init_hidden(records)
             content_plan_iterator = iter(content_plan.t())
@@ -221,16 +219,34 @@ def eval_planner(extractor, content_planner, test=False):
                     break
                 output, hidden, cell = content_planner(
                     input_index, hidden, cell)
-                if record_pointer == output.argmax(dim=1):
-                    correct += 1
-                total += 1
+                outputs.append(output)
+                labels.append(record_pointer)
                 input_index = output.argmax(dim=1)
 
+        return torch.cat(outputs, dim=0), torch.cat(labels, dim=0)
+
     evaluator = Engine(update)
+    loss = Loss(F.nll_loss)
+    loss.attach(evaluator, "loss")
 
     @evaluator.on(Events.COMPLETED)
-    def log_accuracy(engine):
-        print("{} Results - Avg accuracy: {:.2f}%"
-              .format(used_set, correct / total))
+    def log_loss(engine):
+        loss = engine.state.metrics["loss"]
+        print("{} Results - Avg Loss: {:.4f}".format(used_set, loss))
 
     evaluator.run(loader)
+
+
+def get_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.7, log_interval=100):
+    if path.exists("models/content_planner.pt"):
+        print("Trying to load cached content selection & planning model...")
+        content_planner = torch.load(f"models/content_planner.pt")
+        print("Success!")
+    else:
+        print("Failed to locate model.")
+        if not path.exists("models"):
+            makedirs("models")
+        content_planner = train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.7, log_interval=100)
+        torch.save(extractor, "models/content_planner.pt")
+
+    return content_planner
