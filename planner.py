@@ -48,8 +48,8 @@ class ContentPlanner(nn.Module):
         output, (hidden, cell) = self.rnn(input_, (hidden, cell))
         # size = (batch_size x 1 x max_len)
         logits = self.logits_mlp(output)
-        # size = (batch_size x 1 x max_len), clone for gradient computation
-        masked = logits.masked_fill(self.mask.clone(), float("-Inf"))
+        # size = (batch_size x 1 x max_len)
+        masked = logits.masked_fill(self.mask, float("-Inf"))
         # size = (batch_size x max_len)
         attention = F.log_softmax(masked, dim=2).squeeze(1)
 
@@ -100,7 +100,7 @@ class ContentPlanner(nn.Module):
         self.selected_content = self.select_content(records)
         self.mask = records.max(dim=2)[0] == 0
         # transpose first and second dim, because LSTM expects seq_len first
-        hidden = torch.mean(self.selected_content, dim=1, keepdim=True).transpose(0, 1)
+        hidden = torch.sum(self.selected_content, dim=1, keepdim=True).transpose(0, 1)
         cell = torch.zeros_like(hidden)
 
         return hidden, cell
