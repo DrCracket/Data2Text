@@ -176,7 +176,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
         y_pred = extractor(b_sents, b_ents, b_nums)
         loss = F.binary_cross_entropy(y_pred, b_labs)
         loss.backward()
-        torch.nn.utils.clip_grad_value_(extractor.parameters(), clip)
+        nn.utils.clip_grad_value_(extractor.parameters(), clip)
         optimizer.step()
         return loss.item()
 
