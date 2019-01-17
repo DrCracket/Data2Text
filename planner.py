@@ -246,7 +246,7 @@ def get_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip
         print("Failed to locate model.")
         if not path.exists("models"):
             makedirs("models")
-        content_planner = train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.7, log_interval=100)
+        content_planner = train_planner(extractor, epochs, learning_rate, acc_val_init, clip, teacher_forcing_ratio, log_interval)
         torch.save(extractor, "models/content_planner.pt")
 
     return content_planner
