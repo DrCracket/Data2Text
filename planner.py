@@ -100,13 +100,13 @@ class ContentPlanner(nn.Module):
         self.selected_content = self.select_content(records)
         self.mask = records.max(dim=2)[0] == 0
         # transpose first and second dim, because LSTM expects seq_len first
-        hidden = torch.sum(self.selected_content, dim=1, keepdim=True).transpose(0, 1)
+        hidden = torch.mean(self.selected_content, dim=1, keepdim=True).transpose(0, 1)
         cell = torch.zeros_like(hidden)
 
         return hidden, cell
 
 
-def train_planner(extractor, epochs=25, learning_rate=0.015, decay=0.97, acc_val_init=0.1, clip=10, teacher_forcing_ratio=0.5, log_interval=100):
+def train_planner(extractor, epochs=25, learning_rate=0.15, decay=0.97, acc_val_init=0.1, clip=10, teacher_forcing_ratio=0.5, log_interval=100):
     data = load_planner_data("train", extractor)
     loader = DataLoader(data, shuffle=True, batch_size=1)  # online learning
 
@@ -150,7 +150,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.015, decay=0.97, acc_val
                 loss += F.nll_loss(output, record_pointer)
                 len_sequence += 1
                 input_index = output.argmax(dim=1)
-                if input_index.item() == data.stats["EOS_INDEX"]:
+                if input_index == data.stats["EOS_INDEX"]:
                     break
 
         loss.backward()
