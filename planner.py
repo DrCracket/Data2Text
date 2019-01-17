@@ -238,8 +238,8 @@ def eval_planner(extractor, content_planner, test=False):
 
 
 def get_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.7, log_interval=100):
+    print("Trying to load cached content selection & planning model...")
     if path.exists("models/content_planner.pt"):
-        print("Trying to load cached content selection & planning model...")
         content_planner = torch.load(f"models/content_planner.pt")
         print("Success!")
     else:

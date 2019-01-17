@@ -257,8 +257,8 @@ def eval_extractor(extractor, test=False):
 
 def get_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000, lstm=False):
     prefix = "lstm" if lstm else "cnn"
+    print(f"Trying to load cached {prefix} extractor model...")
     if path.exists(f"models/{prefix}_extractor.pt"):
-        print(f"Trying to load cached {prefix} extractor model...")
         extractor = torch.load(f"models/{prefix}_extractor.pt")
         print("Success!")
     else:
