@@ -199,7 +199,7 @@ def eval_planner(extractor, content_planner, test=False):
         loader = DataLoader(data, batch_size=1)
     else:
         used_set = "Validation"
-        data = load_planner_data("test", extractor)
+        data = load_planner_data("valid", extractor)
         loader = DataLoader(data, batch_size=1)
 
     def update(engine, batch):
@@ -240,7 +240,7 @@ def eval_planner(extractor, content_planner, test=False):
 def get_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.7, log_interval=100):
     print("Trying to load cached content selection & planning model...")
     if path.exists("models/content_planner.pt"):
-        content_planner = torch.load(f"models/content_planner.pt")
+        content_planner = torch.load("models/content_planner.pt")
         print("Success!")
     else:
         print("Failed to locate model.")
