@@ -401,7 +401,7 @@ def get_candidate_rels(dataset):
     return extracted_stuff
 
 
-def append_multilabeled_data(entry, sents, entdists, numdists, labels, vocab, labeldict, max_len, len_entries):
+def append_multilabeled_data(entry, sents, entdists, numdists, labels, vocab, labeldict, max_len, len_entries, idx_list, idx):
     """
     used for val, since we have contradictory labelings...
     tup is (sent, [rels]);
@@ -431,6 +431,7 @@ def append_multilabeled_data(entry, sents, entdists, numdists, labels, vocab, la
             labels.append([labeldict[label] for label in label_list])
     if len_entry != 0:
         len_entries.append(len_entry)
+        idx_list.append(idx)
 
 
 def get_player_idxs(entry):
@@ -483,8 +484,7 @@ def preproc_extractor_data(set_type, folder, dataset_name, train_stats=None):
     sents, entdists, numdists, labels, len_entries, idx_list = [], [], [], [], [], []
     max_len = max((len(tup[0]) for entry in extracted_rel_tups[set_type] for tup in entry))
     for idx, entry in enumerate(extracted_rel_tups[set_type]):
-        append_multilabeled_data(entry, sents, entdists, numdists, labels, vocab, labeldict, max_len, len_entries)
-        idx_list.append(idx)
+        append_multilabeled_data(entry, sents, entdists, numdists, labels, vocab, labeldict, max_len, len_entries, idx_list, idx)
     print(f"Generated {len(sents)} {set_type} examples!")
 
     # create tensors from lists
@@ -630,7 +630,6 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     records = torch.zeros(len(pre_content_plans), MAX_RECORDS + 2, 4, dtype=torch.long)
     content_plans = torch.zeros(len(pre_content_plans), MAX_RECORDS + 2, dtype=torch.long)
     stats = dict()
-    print("Assert equal:", len(raw_dataset), len(pre_content_plans))
 
     if corpus_type == "train":  # if corpus is train corpus generate vocabulary
         vocab = Vocab(eos_and_bos=True)
