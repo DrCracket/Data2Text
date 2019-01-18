@@ -108,7 +108,7 @@ class ContentPlanner(nn.Module):
         return hidden, cell
 
 
-def train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.7, log_interval=100):
+def train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.0, log_interval=100):
     data = load_planner_data("train", extractor)
     loader = DataLoader(data, shuffle=True, batch_size=1)  # online learning
 
