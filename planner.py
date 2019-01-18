@@ -247,6 +247,6 @@ def get_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip
         if not path.exists("models"):
             makedirs("models")
         content_planner = train_planner(extractor, epochs, learning_rate, acc_val_init, clip, teacher_forcing_ratio, log_interval)
-        torch.save(extractor, "models/content_planner.pt")
+        torch.save(content_planner, "models/content_planner.pt")
 
     return content_planner
