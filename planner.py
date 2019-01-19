@@ -46,11 +46,11 @@ class ContentPlanner(nn.Module):
         input_ = self.selected_content.gather(1, index)
 
         # size = (batch_size x 1 x hidden_size)
-        output, (hidden, cell) = self.rnn(input_, (hidden, cell))
+        _, (hidden, cell) = self.rnn(input_, (hidden, cell))
         # size = (batch_size x hidden_size x records)
         content_tp = self.linear2(self.selected_content).transpose(1, 2)
         # size = (batch_size x 1 x records)
-        logits = torch.bmm(hidden, content_tp)
+        logits = torch.bmm(hidden.transpose(0, 1), content_tp)
         masked = logits.masked_fill(self.mask, float("-Inf"))
         # size = (batch_size x records)
         attention = F.log_softmax(masked, dim=2).squeeze(1)
@@ -71,19 +71,8 @@ class ContentPlanner(nn.Module):
 
         # compute attention
         # size = (Batch x Records x Records)
-        pre_attn = torch.bmm(emb_relu, emb_lin)
-        # diagonale should be zero. No attention for a record itself
-        # size = (Records x Records)
-        diag_mask = torch.diag(torch.ones(pre_attn.size(1), dtype=torch.uint8))
-        # padded values should also be masked out
-        # size = (Batch x Records)
-        pad_mask_pre = records.max(dim=2)[0] == 0
-        # size = (Batch x Records x Records)
-        pad_mask_pre = pad_mask_pre.unsqueeze(1).repeat(1, records.size(1), 1)
-        pad_mask = pad_mask_pre.transpose(1, 2) | pad_mask_pre
-        mask = diag_mask | pad_mask
-        pre_attn = pre_attn.masked_fill_(mask, float("-Inf"))
-        attention = F.softmax(pre_attn, dim=2)
+        logits = torch.bmm(emb_relu, emb_lin)
+        attention = F.softmax(logits, dim=2)
 
         # apply attention
         # size = (Batch x Records x hidden_size)
@@ -106,7 +95,7 @@ class ContentPlanner(nn.Module):
         return hidden, cell
 
 
-def train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.0, log_interval=100):
+def train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.5, log_interval=100):
     data = load_planner_data("train", extractor)
     loader = DataLoader(data, shuffle=True, batch_size=1)  # online learning
 
@@ -235,7 +224,7 @@ def eval_planner(extractor, content_planner, test=False):
     evaluator.run(loader)
 
 
-def get_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.0, log_interval=100):
+def get_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.5, log_interval=100):
     print("Trying to load cached content selection & planning model...")
     if path.exists("models/content_planner.pt"):
         content_planner = torch.load("models/content_planner.pt")
