@@ -17,9 +17,8 @@ from os import path, makedirs
 
 
 class ContentPlanner(nn.Module):
-    def __init__(self, max_len, input_size, hidden_size=600):
+    def __init__(self, input_size, hidden_size=600):
         super(ContentPlanner, self).__init__()
-        self.max_len = max_len
         self.hidden_size = hidden_size
         self.mask = None
         self.selected_content = None
@@ -35,7 +34,7 @@ class ContentPlanner(nn.Module):
             nn.Sigmoid())
 
         self.rnn = nn.LSTM(hidden_size, hidden_size, batch_first=True)
-        self.logits_mlp = nn.Linear(hidden_size, self.max_len)
+        self.linear2 = nn.Linear(hidden_size, hidden_size)
 
     def forward(self, index, hidden, cell):
         """Content Planning. Uses attention to create pointers to the input records."""
@@ -48,11 +47,12 @@ class ContentPlanner(nn.Module):
 
         # size = (batch_size x 1 x hidden_size)
         output, (hidden, cell) = self.rnn(input_, (hidden, cell))
-        # size = (batch_size x 1 x max_len)
-        logits = self.logits_mlp(output)
-        # size = (batch_size x 1 x max_len)
+        # size = (batch_size x hidden_size x records)
+        content_tp = self.linear2(self.selected_content).transpose(1, 2)
+        # size = (batch_size x 1 x records)
+        logits = torch.bmm(hidden, content_tp)
         masked = logits.masked_fill(self.mask, float("-Inf"))
-        # size = (batch_size x max_len)
+        # size = (batch_size x records)
         attention = F.log_softmax(masked, dim=2).squeeze(1)
 
         return attention, hidden, cell
@@ -67,13 +67,11 @@ class ContentPlanner(nn.Module):
         # size = (Batch x Records x hidden_size)
         emb_relu = self.relu_mlp(emb_cat)
         # size = (Batch x hidden_size x Records)
-        emb_trans = emb_relu.transpose(1, 2)
-        # size = (Batch x Records x hidden_size)
-        emb_lin = self.linear(emb_relu)
+        emb_lin = self.linear(emb_relu).transpose(1, 2)
 
         # compute attention
         # size = (Batch x Records x Records)
-        pre_attn = torch.bmm(emb_lin, emb_trans)
+        pre_attn = torch.bmm(emb_relu, emb_lin)
         # diagonale should be zero. No attention for a record itself
         # size = (Records x Records)
         diag_mask = torch.diag(torch.ones(pre_attn.size(1), dtype=torch.uint8))
@@ -112,7 +110,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, cl
     data = load_planner_data("train", extractor)
     loader = DataLoader(data, shuffle=True, batch_size=1)  # online learning
 
-    content_planner = ContentPlanner(data.records.size(1), len(data.idx2word))
+    content_planner = ContentPlanner(len(data.idx2word))
     optimizer = optim.Adagrad(content_planner.parameters(), lr=learning_rate, initial_accumulator_value=acc_val_init)
 
     print("Training a new Content Planner...")
