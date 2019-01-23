@@ -39,21 +39,18 @@ class ContentPlanner(nn.Module):
     def forward(self, index, hidden, cell):
         """Content Planning. Uses attention to create pointers to the input records."""
 
-        # size = (batch_size) => size = (batch_size x 1)
-        index = index.unsqueeze(1)
-        # size = (batch_size x 1) => size = (batch_size x 1 x hidden_size)
-        index = index.unsqueeze(2).repeat(1, 1, self.hidden_size)
+        # size = (batch_size) => size = (batch_size x 1 x hidden_size)
+        index = index.view(-1, 1, 1).repeat(1, 1, self.hidden_size)
         input_ = self.selected_content.gather(1, index)
 
         # size = (batch_size x 1 x hidden_size)
-        _, (hidden, cell) = self.rnn(input_, (hidden, cell))
+        output, (hidden, cell) = self.rnn(input_, (hidden, cell))
         # size = (batch_size x hidden_size x records)
         content_tp = self.linear2(self.selected_content).transpose(1, 2)
         # size = (batch_size x 1 x records)
-        logits = torch.bmm(hidden.transpose(0, 1), content_tp)
-        masked = logits.masked_fill(self.mask, float("-Inf"))
+        logits = torch.bmm(output, content_tp)
         # size = (batch_size x records)
-        attention = F.log_softmax(masked, dim=2).squeeze(1)
+        attention = F.log_softmax(logits, dim=2).squeeze(1)
 
         return attention, hidden, cell
 
@@ -66,10 +63,10 @@ class ContentPlanner(nn.Module):
         emb_cat = embedded.view(embedded.size(0), embedded.size(1), -1)
         # size = (Batch x Records x hidden_size)
         emb_relu = self.relu_mlp(emb_cat)
-        # size = (Batch x hidden_size x Records)
-        emb_lin = self.linear(emb_relu).transpose(1, 2)
 
         # compute attention
+        # size = (Batch x hidden_size x Records)
+        emb_lin = self.linear(emb_relu).transpose(1, 2)
         # size = (Batch x Records x Records)
         logits = torch.bmm(emb_relu, emb_lin)
         attention = F.softmax(logits, dim=2)
@@ -82,10 +79,36 @@ class ContentPlanner(nn.Module):
 
         return output
 
+    def make_content_plan(self, dataset):
+        """Generate a content plan for the generator."""
+        dim1, dim2, dim3 = dataset.sequence.size(0), dataset.sequence.size(1), self.hidden_size
+        # size = (#entries, records, hidden_size)
+        content_plans = torch.zeros(dim1, dim2, dim3)
+        self.eval()
+
+        with torch.no_grad():
+            for dim1, (records, _) in enumerate(dataset.split(1)):
+                hidden, cell = self.init_hidden(records)
+                input_index = dataset.stats["BOS_INDEX"]
+                dim2 = 0
+                while not input_index == dataset.stats["EOS_INDEX"]:
+                    output, hidden, cell = self(input_index, hidden, cell)
+                    input_index = output.argmax(dim=1)
+                    if input_index not in dataset.stats:  # not BOS, EOS, PAD
+                        # size = (1) => size = (1 x 1 x hidden_size)
+                        idx = input_index.view(-1, 1, 1).repeat(1, 1, self.hidden_size)
+                        content_plans[dim1][dim2] = self.selected_content.gather(1, idx)
+                        # stop when content_planner is to long
+                        if dim2 < dataset.sequence.size(1) - 1:
+                            dim2 += 1
+                        else:
+                            break
+
+        return content_plans
+
     def init_hidden(self, records):
         """Compute the initial hidden state and cell state of the Content Planning LSTM.
         Additionally initialize a mask to mask out the padded values of the LSTM inputs."""
-
         self.selected_content = self.select_content(records)
         self.mask = records.max(dim=2)[0] == 0
         # transpose first and second dim, because LSTM expects seq_len first
@@ -128,7 +151,6 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, cl
                 loss += F.nll_loss(output, record_pointer)
                 len_sequence += 1
                 input_index = record_pointer
-
         else:
             # Without teacher forcing: use its own predictions as the next input
             for record_pointer in content_plan_iterator:
@@ -139,8 +161,6 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, cl
                 loss += F.nll_loss(output, record_pointer)
                 len_sequence += 1
                 input_index = output.argmax(dim=1)
-                if input_index == data.stats["EOS_INDEX"]:
-                    break
 
         loss.backward()
         nn.utils.clip_grad_norm_(content_planner.parameters(), clip)
