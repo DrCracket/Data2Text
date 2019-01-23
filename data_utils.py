@@ -111,23 +111,28 @@ class ExtractorDataset(Dataset):
         return zip(self.sents.split(idx), self.entdists.split(idx), self.numdists.split(idx), self.labels.split(idx))
 
 
-class PlannerDataset(Dataset):
-    records = None
+class SequenceDataset(Dataset):
+    sequence = None
     content_plan = None
     idx2word = None
     stats = None
 
-    def __init__(self, records, content_plan, idx2word, stats):
-        self.records = records
+    def __init__(self, sequence, content_plan, idx2word, stats):
+        super().__init__()
+        self.sequence = sequence
         self.content_plan = content_plan
         self.idx2word = idx2word
         self.stats = stats
 
     def __getitem__(self, idx):
-        return (self.records[idx], self.content_plan[idx])
+        return (self.sequence[idx], self.content_plan[idx])
 
     def __len__(self):
-        return (len(self.records))
+        return (len(self.sequence))
+
+    def split(self, idx):
+        return zip(self.sequence.split(idx), self.content_plan.split(idx))
+
 
 ###############################################################################
 # Helper Functions                                                            #
@@ -690,6 +695,37 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
 
     return records, content_plans, vocab, stats
 
+
+def preproc_generator_data(corpus_type, extractor, generator, folder="boxscore-data", dataset="rotowire"):
+    print(f"Processing summaries and content plans from the {corpus_type} corpus...")
+    plan_dataset = load_planner_data(corpus_type, extractor, folder, dataset)
+    content_plans = generator.make_content_plan(plan_dataset)
+    stats = dict()
+
+    with tarfile.open(f"{folder}/{dataset}.tar.bz2", "r:bz2") as f:
+        raw_dataset = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())
+    if corpus_type == "train":  # if corpus is train corpus generate vocabulary
+        word_counter = OrderedCounter()
+        for entry in raw_dataset:
+                word_counter.update(entry["summary"])
+        for k in list(word_counter.keys()):
+            if word_counter[k] < 2:
+                del word_counter[k]  # will replace w/ unk
+        vocab = Vocab(word_counter.keys(), eos_and_bos=True)
+    elif path.exists(".cache/planner/vocab.pt"):  # else load vocab
+        vocab = pickle.load(open(".cache/planner/vocab.pt", "rb"))
+    else:  # if it doesn't exist create it
+        _, _, vocab = preproc_planner_data("train", extractor, generator, folder, dataset)
+
+    # used by the planner to identify indices of special words
+    stats["BOS_INDEX"] = torch.tensor([vocab[BOS_WORD]])
+    stats["EOS_INDEX"] = torch.tensor([vocab[EOS_WORD]])
+    stats["PAD_INDEX"] = torch.tensor([vocab[PAD_WORD]])
+    summaries = [[vocab[word] for word in entry["summary"]] for entry in raw_dataset]
+
+    return summaries, content_plans, vocab, stats
+
+
 ###############################################################################
 # Functions to create datasets                                                #
 ###############################################################################
@@ -727,4 +763,19 @@ def load_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="r
         records, content_plans, vocab, stats = preproc_planner_data(corpus_type, extractor, folder, dataset)
 
     idx2word = dict(((v, k) for k, v in vocab.items()))
-    return PlannerDataset(records, content_plans, idx2word, stats)
+    return SequenceDataset(records, content_plans, idx2word, stats)
+
+
+def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data", dataset="rotowire"):
+    try:
+        summaries = torch.load(f".cache/generator/{corpus_type}_summaries.pt")
+        content_plans = torch.load(f".cache/generator/{corpus_type}_content_plans.pt")
+        vocab = pickle.load(open(".cache/generator/vocab.pt", "rb"))
+        stats = pickle.load(open(".cache/generator/stats.pt", "rb"))
+
+    except FileNotFoundError:
+        print(f"Failed to locate cached {corpus_type} corpus!")
+        summaries, content_plans, vocab, stats = preproc_generator_data(corpus_type, extractor, planner, folder, dataset)
+
+    idx2word = dict(((v, k) for k, v in vocab.items()))
+    return SequenceDataset(summaries, content_plans, idx2word, stats)
