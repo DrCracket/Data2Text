@@ -36,20 +36,22 @@ class Extractor(nn.Module, ABC):
 
     def extract_relations(self, dataset):
         total_relations = []
+        self.eval()
 
-        for idx, (sents, entdists, numdists, _) in zip(dataset.idx_list, dataset.split(dataset.len_entries)):
-            predictions = self.forward(sents, entdists, numdists)
-            relations = []
-            for prediction, sent, entdist, numdist in zip(predictions, sents, entdists, numdists):
-                type_ = dataset.idx2type[prediction.argmax().item()]
-                entity = []
-                number = []
-                for word, ent, num in zip(sent, entdist, numdist):
-                    if ent.item() + dataset.stats["entshift"] == 0:
-                        entity.append(dataset.idx2word[word.item()])
-                    if num.item() + dataset.stats["numshift"] == 0:
-                        number.append(dataset.idx2word[word.item()])
-                relations.append([" ".join(entity), " ".join(number), type_])
+        with torch.no_grad:
+            for idx, (sents, entdists, numdists, _) in zip(dataset.idx_list, dataset.split(dataset.len_entries)):
+                predictions = self.forward(sents, entdists, numdists)
+                relations = []
+                for prediction, sent, entdist, numdist in zip(predictions, sents, entdists, numdists):
+                    type_ = dataset.idx2type[prediction.argmax().item()]
+                    entity = []
+                    number = []
+                    for word, ent, num in zip(sent, entdist, numdist):
+                        if ent.item() + dataset.stats["entshift"] == 0:
+                            entity.append(dataset.idx2word[word.item()])
+                        if num.item() + dataset.stats["numshift"] == 0:
+                            number.append(dataset.idx2word[word.item()])
+                    relations.append([" ".join(entity), " ".join(number), type_])
             total_relations.append((idx, relations))
         return total_relations
 
@@ -162,6 +164,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
     Model = LSTMExtractor if lstm else CNNExtractor
     data = load_extractor_data("train")
     loader = DataLoader(data, shuffle=True, batch_size=batch_size)
+    loss_fn = MarginalNLLLoss()
 
     extractor = Model(data.stats["n_words"], data.stats["max_dist"], num_types=data.stats["n_types"])
     optimizer = optim.SGD(extractor.parameters(), lr=learning_rate)
@@ -174,7 +177,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
         optimizer.zero_grad()
         b_sents, b_ents, b_nums, b_labs = batch
         y_pred = extractor(b_sents, b_ents, b_nums)
-        loss = F.binary_cross_entropy(y_pred, b_labs)
+        loss = loss_fn(y_pred, b_labs)
         loss.backward()
         nn.utils.clip_grad_value_(extractor.parameters(), clip)
         optimizer.step()
@@ -214,6 +217,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
 
 
 def eval_extractor(extractor, test=False):
+    loss_fn = MarginalNLLLoss()
     if test:
         used_set = "Test"
         loader = DataLoader(load_extractor_data("test"), batch_size=1000)
@@ -228,7 +232,7 @@ def eval_extractor(extractor, test=False):
         with torch.no_grad():
             b_sents, b_ents, b_nums, b_labs = batch
             y_pred = extractor(b_sents, b_ents, b_nums)
-            loss = F.binary_cross_entropy(y_pred, b_labs)
+            loss = loss_fn(y_pred, b_labs)
 
             # transform the multi-label one-hot labels
             idxs_pred = y_pred.argmax(dim=1)
