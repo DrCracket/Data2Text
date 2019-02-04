@@ -7,7 +7,6 @@ from random import random
 from torch.utils.data import DataLoader
 from ignite.engine import Engine, Events
 from ignite.handlers import ModelCheckpoint
-from ignite.metrics import Loss
 from data_utils import load_generator_data
 from os import path, makedirs
 
@@ -26,42 +25,43 @@ class TextGenerator(nn.Module):
         self.soft_mlp = nn.Sequential(
             nn.Linear(2 * hidden_size, word_input_size),
             nn.LogSoftmax(dim=2))
+        self.sig_copy = nn.Sequential(
+            nn.Linear(2 * hidden_size, 1),
+            nn.Sigmoid())
 
     def forward(self, word, hidden, cell):
         """Content Planning. Uses attention to create pointers to the input records."""
-        # shape = (batch_size x 1 x word_hidden_size)
+        # shape = (batch_size, 1, word_hidden_size)
         embedded = self.embedding(word)
-        # output.shape = (batch_size x 1 x 2 * hidden_size)
-        output, (hidden, cell) = self.decoder_rnn(embedded)
+        # output.shape = (batch_size, 1, 2 * hidden_size)
+        hidden, (_, cell) = self.decoder_rnn(embedded)
         # shape = (batch_size, 2 * hidden_size, seq_len)
         enc_lin = self.linear(self.encoded).transpose(1, 2)
         # shape = (batch_size, 1, seq_len)
-        attention = F.softmax(torch.bmm(output, enc_lin))
+        attention = F.softmax(torch.bmm(hidden, enc_lin))
         # shape = (batch_size, 1, 2 * hidden_size)
         selected = torch.bmm(attention, self.encoded)
 
-        new_hidden = self.tanh_mlp(torch.cat((output, selected), dim=2))
-        prediction = self.soft_mlp(new_hidden)
+        new_hidden = self.tanh_mlp(torch.cat((hidden, selected), dim=2))
+        out_prob = self.soft_mlp(new_hidden)
+        p_copy = self.sig_copy(new_hidden)
 
         # shape = (num_layers, num_directions, batch_size, hidden_size)
         new_hidden = new_hidden.view(1, 2, 1, -1)
-
-        return prediction, new_hidden, cell
+        return out_prob, attention.log(), p_copy, new_hidden, cell,
 
     def encode_recods(self, records):
-        """Content selection gate. Determines importance vis-a-vis other records."""
         # encoded.shape = (batch_size, seq_len, 2 * hidden_size)
         encoded, (hidden, cell) = self.encoder_rnn(records)
         return encoded, hidden, cell
 
     def init_hidden(self, records):
-        """Compute the initial hidden state and cell state of the Content Planning LSTM.
-        Additionally initialize a mask to mask out the padded values of the LSTM inputs."""
+        """Compute the initial hidden state and cell state of the Content Planning LSTM."""
         self.encoded, hidden, cell = self.encode_recods(records)
         return hidden, cell
 
 
-def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.5, log_interval=100):
+def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     data = load_generator_data("train", extractor, content_planner)
     loader = DataLoader(data, shuffle=True, batch_size=1)  # online learning
 
@@ -80,30 +80,41 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15, a
         records, text = batch
         hidden, cell = generator.init_hidden(records)
         text_iterator = iter(text.t())
-        input_word = next(text_iterator)
+        input_word, _ = next(text_iterator)
         loss = 0
         len_sequence = 0
 
         if use_teacher_forcing:
             # Teacher forcing: Feed the target as the next input
-            for word in text_iterator:
+            for word, copy_tgt in text_iterator:
                 if word == data.stats["PAD_INDEX"]:
                     break  # don't continue on the padded values
-                output, hidden, cell = generator(
+                out_prob, copy_prob, p_copy, hidden, cell = generator(
                     input_word, hidden, cell)
-                loss += F.nll_loss(output, word)
+                loss += F.binary_crossentropy(p_copy, copy_tgt)
+                if copy_tgt:
+                    loss += F.nll_loss(out_prob, word)
+                else:
+                    loss += F.nll_loss(copy_prob, word)
                 len_sequence += 1
-                input_word = word
+                input_word = data.copy2vocab[word] if copy_tgt else word
         else:
             # Without teacher forcing: use its own predictions as the next input
-            for word in text_iterator:
+            for word, copy_tgt in text_iterator:
                 if word == data.stats["PAD_INDEX"]:
                     break
-                output, hidden, cell = generator(
+                out_prob, copy_prob, p_copy, hidden, cell = generator(
                     input_word, hidden, cell)
-                loss += F.nll_loss(output, word)
+                loss += F.binary_crossentropy(p_copy, copy_tgt)
+                if copy_tgt:
+                    loss += F.nll_loss(out_prob, word)
+                else:
+                    loss += F.nll_loss(copy_prob, word)
                 len_sequence += 1
-                input_word = output.argmax(dim=1)
+                if p_copy:
+                    input_word = data.copy2vocab[copy_prob.argmax(dim=1)]
+                else:
+                    input_word = out_prob.argmax(dim=1)
 
         loss.backward()
         nn.utils.clip_grad_norm_(generator.parameters(), clip)
@@ -128,13 +139,13 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15, a
             print("Training Progress {:.2f}% || Epoch: {}/{}, Iteration: {}/{}, Loss: {:.4f}"
                   .format(progress, epoch, epochs, iteration % max_iters, max_iters, loss))
 
-    @trainer.on(Events.EPOCH_COMPLETED)
-    def _validate(engine):
-        eval_generator(extractor, generator)
+    # @trainer.on(Events.EPOCH_COMPLETED)
+    # def _validate(engine):
+    #     eval_generator(extractor, generator)
 
-    @trainer.on(Events.COMPLETED)
-    def _test(engine):
-        eval_generator(extractor, generator, test=True)
+    # @trainer.on(Events.COMPLETED)
+    # def _test(engine):
+    #     eval_generator(extractor, generator, test=True)
 
     trainer.run(loader, epochs)
     print("Finished training process!")
@@ -152,42 +163,42 @@ def eval_generator(extractor, content_planner, generator, test=False):
         data = load_generator_data("valid", extractor, content_planner)
         loader = DataLoader(data, batch_size=1)
 
-    def update(engine, batch):
+    def _update(engine, batch):
         """Update function for the Conent Selection & Planning Module.
         Right now only online learning is supported"""
         generator.eval()
-        outputs = list()
-        labels = list()
+        outputs = [data.stats["BOS_INDEX"]]
         with torch.no_grad():
-            records, content_plan = batch
+            records, text = batch
             hidden, cell = generator.init_hidden(records)
-            content_plan_iterator = iter(content_plan.t())
-            input_index = next(content_plan_iterator)
+            input_word = data.stats["BOS_INDEX"]
 
-            for record_pointer in content_plan_iterator:
-                if record_pointer == data.stats["PAD_INDEX"]:
-                    break
-                output, hidden, cell = content_planner(
-                    input_index, hidden, cell)
-                outputs.append(output)
-                labels.append(record_pointer)
-                input_index = output.argmax(dim=1)
+            while input_word != data.stats["EOS_INDEX"]:
+                out_prob, copy_prob, p_copy, hidden, cell = generator(
+                    input_word, hidden, cell)
+                if p_copy:
+                    outputs.append(data.copy2vocab[copy_prob])
+                else:
+                    outputs.append(data.copy2vocab[out_prob])
 
-        return torch.cat(outputs, dim=0), torch.cat(labels, dim=0)
+                input_word = data.copy2vocab[copy_prob.argmax(dim=1)] if p_copy else out_prob.argmax(dim=1)
 
-    evaluator = Engine(update)
-    loss = Loss(F.nll_loss)
-    loss.attach(evaluator, "loss")
+        return torch.cat(outputs, dim=0), text
+
+    evaluator = Engine(_update)
+    # TODO: add Wiseman metrics when implemented
+    # loss = Loss(text_metric)
+    # loss.attach(evaluator, "text_metric")
 
     @evaluator.on(Events.COMPLETED)
-    def log_loss(engine):
-        loss = engine.state.metrics["loss"]
+    def _log_loss(engine):
+        loss = engine.state.metrics["text-metric"]
         print("{} Results - Avg Loss: {:.4f}".format(used_set, loss))
 
     evaluator.run(loader)
 
 
-def get_extractor(extractor, content_planner, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.5, log_interval=100):
+def get_extractor(extractor, content_planner, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     print("Trying to load cached content selection & planning model...")
     if path.exists("models/content_planner.pt"):
         content_planner = torch.load("models/content_planner.pt")
