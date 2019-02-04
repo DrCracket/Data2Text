@@ -696,10 +696,10 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     return records, content_plans, vocab, stats
 
 
-def preproc_generator_data(corpus_type, extractor, generator, folder="boxscore-data", dataset="rotowire"):
+def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-data", dataset="rotowire"):
     print(f"Processing summaries and content plans from the {corpus_type} corpus...")
     plan_dataset = load_planner_data(corpus_type, extractor, folder, dataset)
-    content_plans = generator.make_content_plan(plan_dataset)
+    content_plans = planner.make_content_plan(plan_dataset)
     stats = dict()
 
     with tarfile.open(f"{folder}/{dataset}.tar.bz2", "r:bz2") as f:
@@ -715,7 +715,7 @@ def preproc_generator_data(corpus_type, extractor, generator, folder="boxscore-d
     elif path.exists(".cache/planner/vocab.pt"):  # else load vocab
         vocab = pickle.load(open(".cache/planner/vocab.pt", "rb"))
     else:  # if it doesn't exist create it
-        _, _, vocab = preproc_planner_data("train", extractor, generator, folder, dataset)
+        _, _, vocab = preproc_planner_data("train", extractor, planner, folder, dataset)
 
     # used by the planner to identify indices of special words
     stats["BOS_INDEX"] = torch.tensor([vocab[BOS_WORD]])
