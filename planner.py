@@ -118,7 +118,7 @@ class ContentPlanner(nn.Module):
         return hidden, cell
 
 
-def train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.5, log_interval=100):
+def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     data = load_planner_data("train", extractor)
     loader = DataLoader(data, shuffle=True, batch_size=1)  # online learning
 
@@ -244,16 +244,18 @@ def eval_planner(extractor, content_planner, test=False):
     evaluator.run(loader)
 
 
-def get_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.5, log_interval=100):
+def get_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     print("Trying to load cached content selection & planning model...")
     if path.exists("models/content_planner.pt"):
-        content_planner = torch.load("models/content_planner.pt")
+        data = load_planner_data("train", extractor)
+        content_planner = ContentPlanner(len(data.idx2word))
+        content_planner.load_state_dict(torch.load("models/content_planner.pt"))
         print("Success!")
     else:
         print("Failed to locate model.")
         if not path.exists("models"):
             makedirs("models")
         content_planner = train_planner(extractor, epochs, learning_rate, acc_val_init, clip, teacher_forcing_ratio, log_interval)
-        torch.save(content_planner, "models/content_planner.pt")
+        torch.save(content_planner.state_dict(), "models/content_planner.pt")
 
     return content_planner

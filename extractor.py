@@ -260,10 +260,12 @@ def eval_extractor(extractor, test=False):
 
 
 def get_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000, lstm=False):
-    prefix = "lstm" if lstm else "cnn"
+    prefix, Model = ("lstm", LSTMExtractor) if lstm else ("cnn", CNNExtractor)
     print(f"Trying to load cached {prefix} extractor model...")
     if path.exists(f"models/{prefix}_extractor.pt"):
-        extractor = torch.load(f"models/{prefix}_extractor.pt")
+        data = load_extractor_data("train")
+        extractor = Model(data.stats["n_words"], data.stats["max_dist"], num_types=data.stats["n_types"])
+        extractor.load_state_dict(torch.load(f"models/{prefix}_extractor.pt"))
         print("Success!")
     else:
         print("Failed to locate model.")
