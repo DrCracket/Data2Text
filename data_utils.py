@@ -627,8 +627,8 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
 
     extr_dataset = load_extractor_data(corpus_type, folder, dataset)
     pre_content_plans = extractor.extract_relations(extr_dataset)
-    # add two to MAX_RECORDS for BOS and EOS records
-    records = torch.zeros(len(pre_content_plans), MAX_RECORDS + 2, 4, dtype=torch.long)
+    # add four to MAX_RECORDS for BOS, EOS and two initial PAD records
+    records = torch.zeros(len(pre_content_plans), MAX_RECORDS + 4, 4, dtype=torch.long)
     content_plans = torch.zeros(len(pre_content_plans), MAX_RECORDS + 2, dtype=torch.long)
     stats = dict()
 
