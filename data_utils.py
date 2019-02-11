@@ -557,20 +557,16 @@ def preproc_extractor_data(set_type, folder, dataset_name, train_stats=None):
 
 def add_special_records(records, idx):
     """special records for enabling pointing to bos and eos in first stage"""
-    record = []
-    record.append(BOS_WORD)
-    record.append(PAD_WORD)
-    record.append(PAD_WORD)
-    record.append(PAD_WORD)
-    records["SPECIAL_RECORDS"].append((idx, record))
-    idx += 1
-    record = []
-    record.append(EOS_WORD)
-    record.append(PAD_WORD)
-    record.append(PAD_WORD)
-    record.append(PAD_WORD)
-    records["SPECIAL_RECORDS"].append((idx, record))
-    idx += 1
+
+    # add two Padding Records, so that record indices match with vocab indices
+    for entity in (PAD_WORD, PAD_WORD, BOS_WORD, EOS_WORD):
+        record = []
+        record.append(entity)
+        record.append(PAD_WORD)
+        record.append(PAD_WORD)
+        record.append(PAD_WORD)
+        records["SPECIAL_RECORDS"].append((idx, record))
+        idx += 1
 
     return records, idx
 
@@ -658,7 +654,7 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
             entry_records, vocab = create_records(raw_entry, vocab)
         else:
             entry_records, _ = create_records(raw_entry)
-        content_plan = [vocab[BOS_WORD]]  # begin sequence with BOS word
+        content_plan = [vocab[BOS_WORD]]  # begin sequence with BOS record
         # for every extracted record in the ie content plan:
         for extr_record in pre_content_plan:
             # get the entity that has the highest string similarity (if the type of the extracted relation isn't NONE)
@@ -677,7 +673,7 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
                             content_plan.append(idx)
                             break
         content_plan.append(vocab[EOS_WORD])  # end sequence with EOS word
-        # translate words to indeces and create tensors
+        # translate words to indices and create tensors
         for entity_records in entry_records.values():
             for dim2, record in entity_records:
                 for dim3, word in enumerate(record):
@@ -707,7 +703,7 @@ def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-dat
     if corpus_type == "train":  # if corpus is train corpus generate vocabulary
         word_counter = OrderedCounter()
         for entry in raw_dataset:
-                word_counter.update(entry["summary"])
+            word_counter.update(entry["summary"])
         for k in list(word_counter.keys()):
             if word_counter[k] < 2:
                 del word_counter[k]  # will replace w/ unk

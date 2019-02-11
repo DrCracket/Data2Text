@@ -87,8 +87,9 @@ class ContentPlanner(nn.Module):
         self.eval()
 
         with torch.no_grad():
-            for dim1, (records, _) in enumerate(dataset.split(1)):
-                hidden, cell = self.init_hidden(records)
+            for dim1 in range(len(dataset)):
+                records, _ = dataset[dim1]
+                hidden, cell = self.init_hidden(records.unsqueeze(0))
                 input_index = dataset.stats["BOS_INDEX"]
                 dim2 = 0
                 while not input_index == dataset.stats["EOS_INDEX"]:
@@ -98,6 +99,7 @@ class ContentPlanner(nn.Module):
                         # size = (1) => size = (1 x 1 x hidden_size)
                         idx = input_index.view(-1, 1, 1).repeat(1, 1, self.hidden_size)
                         content_plans[dim1][dim2] = self.selected_content.gather(1, idx)
+                        # print(([dataset.idx2word[idx.item()] for idx in records[input_index].split(1, dim=1)], input_index))
                         # stop when content_planner is to long
                         if dim2 < dataset.sequence.size(1) - 1:
                             dim2 += 1
