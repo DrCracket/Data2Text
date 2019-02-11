@@ -38,7 +38,7 @@ class Extractor(nn.Module, ABC):
         total_relations = []
         self.eval()
 
-        with torch.no_grad:
+        with torch.no_grad():
             for idx, (sents, entdists, numdists, _) in zip(dataset.idx_list, dataset.split(dataset.len_entries)):
                 predictions = self.forward(sents, entdists, numdists)
                 relations = []
