@@ -52,7 +52,7 @@ class Extractor(nn.Module, ABC):
                         if num.item() + dataset.stats["numshift"] == 0:
                             number.append(dataset.idx2word[word.item()])
                     relations.append([" ".join(entity), " ".join(number), type_])
-            total_relations.append((idx, relations))
+                total_relations.append((idx, relations))
         return total_relations
 
 
