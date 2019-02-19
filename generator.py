@@ -10,6 +10,7 @@ from ignite.handlers import ModelCheckpoint
 from data_utils import load_generator_data
 from os import path, makedirs
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class TextGenerator(nn.Module):
     def __init__(self, word_input_size, word_hidden_size=600, record_hidden_size=600, hidden_size=600):
@@ -64,12 +65,16 @@ class TextGenerator(nn.Module):
         return hidden, cell
 
 
+def to_device(tensor_list):
+     return [t.to(device, non_blocking=True) for t in tensor_list]
+
+
 def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
                     acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     data = load_generator_data("train", extractor, content_planner)
-    loader = DataLoader(data, shuffle=True, batch_size=1)  # online learning
+    loader = DataLoader(data, shuffle=True, batch_size=1, pin_memory=True)  # online learning
 
-    generator = TextGenerator(len(data.idx2word))
+    generator = TextGenerator(len(data.idx2word)).to(device)
     optimizer = optim.Adagrad(generator.parameters(), lr=learning_rate, initial_accumulator_value=acc_val_init)
 
     print("Training a new Text Generator...")
@@ -81,7 +86,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
         optimizer.zero_grad()
         use_teacher_forcing = True if random() < teacher_forcing_ratio else False
 
-        text, p_copy, content_plan, copy_indices, copy_values = batch
+        text, p_copy, content_plan, copy_indices, copy_values = to_device(batch)
         # remove all the zero padded values from the content plans
         non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
         non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
@@ -92,42 +97,43 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
         input_word, input_copy_prob = next(text_iterator)
         loss = 0
         len_sequence = 0
+        
+        if len(content_plan) > 0:
+            if use_teacher_forcing:
+                # Teacher forcing: Feed the target as the next input
+                for word, copy_tgt in text_iterator:
+                    if word.cpu() == data.stats["PAD_INDEX"]:
+                        break  # don't continue on the padded values
+                    out_prob, copy_prob, p_copy, hidden, cell = generator(
+                        input_word, hidden, cell)
+                    loss += F.binary_cross_entropy(p_copy, copy_tgt.view(-1, 1))
+                    if copy_tgt:
+                        loss += F.nll_loss(copy_prob, next(copy_index))
+                    else:
+                        loss += F.nll_loss(out_prob, word)
+                    len_sequence += 1
+                    input_word = next(copy_word) if copy_tgt else word
+            else:
+                # Without teacher forcing: use its own predictions as the next input
+                for word, copy_tgt in text_iterator:
+                    if word.cpu() == data.stats["PAD_INDEX"]:
+                        break
+                    out_prob, copy_prob, p_copy, hidden, cell = generator(
+                        input_word, hidden, cell)
+                    loss += F.binary_cross_entropy(p_copy, copy_tgt.view(-1, 1))
+                    if copy_tgt:
+                        loss += F.nll_loss(copy_prob, next(copy_index))
+                    else:
+                        loss += F.nll_loss(out_prob, word)
+                    len_sequence += 1
+                    if p_copy > 0.5:
+                        input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
+                    else:
+                        input_word = out_prob.argmax(dim=1)
 
-        if use_teacher_forcing:
-            # Teacher forcing: Feed the target as the next input
-            for word, copy_tgt in text_iterator:
-                if word == data.stats["PAD_INDEX"]:
-                    break  # don't continue on the padded values
-                out_prob, copy_prob, p_copy, hidden, cell = generator(
-                    input_word, hidden, cell)
-                loss += F.binary_cross_entropy(p_copy, copy_tgt.view(-1, 1))
-                if copy_tgt:
-                    loss += F.nll_loss(copy_prob, next(copy_index))
-                else:
-                    loss += F.nll_loss(out_prob, word)
-                len_sequence += 1
-                input_word = next(copy_word) if copy_tgt else word
-        else:
-            # Without teacher forcing: use its own predictions as the next input
-            for word, copy_tgt in text_iterator:
-                if word == data.stats["PAD_INDEX"]:
-                    break
-                out_prob, copy_prob, p_copy, hidden, cell = generator(
-                    input_word, hidden, cell)
-                loss += F.binary_cross_entropy(p_copy, copy_tgt.view(-1, 1))
-                if copy_tgt:
-                    loss += F.nll_loss(copy_prob, next(copy_index))
-                else:
-                    loss += F.nll_loss(out_prob, word)
-                len_sequence += 1
-                if p_copy > 0.5:
-                    input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
-                else:
-                    input_word = out_prob.argmax(dim=1)
-
-        loss.backward()
-        nn.utils.clip_grad_norm_(generator.parameters(), clip)
-        optimizer.step()
+            loss.backward()
+            nn.utils.clip_grad_norm_(generator.parameters(), clip)
+            optimizer.step()
         return loss.item() / len_sequence  # normalize loss for logging
 
     trainer = Engine(_update)
