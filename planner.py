@@ -126,7 +126,7 @@ class ContentPlanner(nn.Module):
 
 def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     data = load_planner_data("train", extractor)
-    loader = DataLoader(data, shuffle=True, batch_size=1)  # online learning
+    loader = DataLoader(data, shuffle=True)  # online learning
 
     content_planner = ContentPlanner(len(data.idx2word))
     optimizer = optim.Adagrad(content_planner.parameters(), lr=learning_rate, initial_accumulator_value=acc_val_init)
@@ -147,25 +147,17 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1, cl
         loss = 0
         len_sequence = 0
 
-        if use_teacher_forcing:
-            # Teacher forcing: Feed the target as the next input
-            for record_pointer in content_plan_iterator:
-                if record_pointer == data.stats["PAD_INDEX"]:
-                    break  # don't continue on the padded values
-                output, hidden, cell = content_planner(
-                    input_index, hidden, cell)
-                loss += F.nll_loss(output, record_pointer)
-                len_sequence += 1
+        for record_pointer in content_plan_iterator:
+            if record_pointer == data.stats["PAD_INDEX"]:
+                break
+            output, hidden, cell = content_planner(
+                input_index, hidden, cell)
+            loss += F.nll_loss(output, record_pointer)
+            len_sequence += 1
+
+            if use_teacher_forcing:
                 input_index = record_pointer
-        else:
-            # Without teacher forcing: use its own predictions as the next input
-            for record_pointer in content_plan_iterator:
-                if record_pointer == data.stats["PAD_INDEX"]:
-                    break
-                output, hidden, cell = content_planner(
-                    input_index, hidden, cell)
-                loss += F.nll_loss(output, record_pointer)
-                len_sequence += 1
+            else:
                 input_index = output.argmax(dim=1)
 
         loss.backward()
