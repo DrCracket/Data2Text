@@ -15,6 +15,9 @@ from ignite.metrics import Loss
 from data_utils import load_planner_data
 from os import path, makedirs
 
+# there shouldn't be longer content plans than 50 records
+max_content_plan_length = 50
+
 
 class ContentPlanner(nn.Module):
     def __init__(self, input_size, hidden_size=600):
@@ -83,8 +86,8 @@ class ContentPlanner(nn.Module):
         """Generate a content plan for the generator."""
         dim1, dim2, dim3 = dataset.sequence.size(0), dataset.sequence.size(1), self.hidden_size
         # size = (#entries, records, hidden_size)
-        content_plans = torch.zeros(dim1, dim2, dim3)
-        record_indices = torch.zeros(dim1, dim2, dtype=torch.long)
+        content_plans = torch.zeros(dim1, max_content_plan_length, dim3)
+        record_indices = torch.zeros(dim1, max_content_plan_length, dtype=torch.long)
         self.eval()
 
         with torch.no_grad():
@@ -101,9 +104,8 @@ class ContentPlanner(nn.Module):
                         idx = record_index.view(-1, 1, 1).repeat(1, 1, self.hidden_size)
                         content_plans[dim1][dim2] = self.selected_content.gather(1, idx)
                         record_indices[dim1][dim2] = record_index
-                        # print(([dataset.idx2word[idx.item()] for idx in records[record_index].split(1, dim=1)], record_index))
                         # stop when content_planner is to long
-                        if dim2 < dataset.sequence.size(1) - 1:
+                        if dim2 < max_content_plan_length - 1:
                             dim2 += 1
                         else:
                             break
