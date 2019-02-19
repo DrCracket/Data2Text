@@ -115,12 +115,14 @@ class SequenceDataset(Dataset):
     sequence = None
     content_plan = None
     idx2word = None
+    vocab = None
     stats = None
 
-    def __init__(self, sequence, content_plan, idx2word, stats):
+    def __init__(self, sequence, content_plan, vocab, idx2word, stats):
         super().__init__()
         self.sequence = sequence
         self.content_plan = content_plan
+        self.vocab = vocab
         self.idx2word = idx2word
         self.stats = stats
 
@@ -130,8 +132,21 @@ class SequenceDataset(Dataset):
     def __len__(self):
         return (len(self.sequence))
 
-    def split(self, idx):
-        return zip(self.sequence.split(idx), self.content_plan.split(idx))
+
+class CopyDataset(SequenceDataset):
+    p_copy = None
+    copy_indices = None
+    copy_values = None
+
+    def __init__(self, sequence, p_copy, copy_indices, copy_values, content_plan, vocab, idx2word, stats):
+        super().__init__(sequence, content_plan, vocab, idx2word, stats)
+        self.p_copy = p_copy
+        self.copy_indices = copy_indices
+        self.copy_values = copy_values
+
+    def __getitem__(self, idx):
+        return (self.sequence[idx], self.p_copy[idx], self.content_plan[idx],
+                self.copy_indices[idx], self.copy_values[idx])
 
 
 ###############################################################################
@@ -692,34 +707,128 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     return records, content_plans, vocab, stats
 
 
+def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
+    """ Extract the probabilities of which words are copied from the dataset"""
+    all_ents = set()
+    all_sents = list()
+    all_p_copy = list()
+    copy_indices = list()
+    copy_values = list()
+
+    for index in entry_indices:
+        if index == vocab[PAD_WORD]:
+            break
+        all_ents.add(idx2word[records[index][0].item()])
+
+    entset = set()
+    for entity in all_ents:
+        for piece in entity.split(" "):
+            if len(piece) > 1 and piece not in ["II", "III", "Jr.", "Jr"]:
+                entset.add(piece)
+    all_ents = all_ents | entset
+
+    for sent in sent_tokenize(" ".join(summary)):
+        tokes = list()
+        split_sent = sent.split(" ")
+        for i, word in enumerate(split_sent):
+            if word in number_words and not annoying_number_word(split_sent, i):
+                j = 1
+                while i + j < len(split_sent) and split_sent in number_words and not annoying_number_word(split_sent, i + j):
+                    j += 1
+                tokes.append(str(w2n.word_to_num(" ".join(split_sent[i:i + j]))))
+                i += j
+            else:
+                tokes.append(word)
+        p_copy = [0] * len(tokes)
+        ents = extract_entities(tokes, all_ents, list())
+        nums = extract_numbers(tokes)
+        for ent in ents:
+            for num in nums:
+                for i, index in enumerate(entry_indices):
+                    if index == vocab[PAD_WORD]:
+                        break
+                    entity = idx2word[records[index][0].item()]
+                    identifiers = {entity}
+                    value = idx2word[records[index][2].item()]
+                    for piece in entity.split():
+                        if len(piece) > 1 and piece not in ["II", "III", "Jr.", "Jr"]:
+                            identifiers.add(piece)
+                    if ent[2] in identifiers and num[2] == int(value):
+                        p_copy[num[0]:num[1]] = [1]
+                        copy_indices.append(i)
+                        copy_values.append(idx2word[records[index][2].item()])
+                        break
+        all_sents.extend(tokes)
+        all_p_copy.extend(p_copy)
+
+    return all_sents, all_p_copy, copy_indices, copy_values
+
+
 def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-data", dataset="rotowire"):
     print(f"Processing summaries and content plans from the {corpus_type} corpus...")
     plan_dataset = load_planner_data(corpus_type, extractor, folder, dataset)
-    content_plans = planner.make_content_plan(plan_dataset)
+    content_plans, record_indices = planner.make_content_plan(plan_dataset)
     stats = dict()
+    summaries = list()
+    all_p_copy = list()
+    all_copy_indices = list()
+    all_copy_values = list()
 
     with tarfile.open(f"{folder}/{dataset}.tar.bz2", "r:bz2") as f:
         raw_dataset = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())
+
+    for idx in range(len(plan_dataset)):
+        records, _ = plan_dataset[idx]
+        entry_indices = record_indices[idx]
+        summary = raw_dataset[idx]["summary"]
+
+        summary, p_copy, copy_indices, copy_values = get_copy_probs(summary, entry_indices,
+                                                                    records, plan_dataset.vocab, plan_dataset.idx2word)
+        summary.insert(0, BOS_WORD)
+        summary.append(EOS_WORD)
+        summaries.append(summary)
+        p_copy.insert(0, 0)
+        p_copy.append(0)
+        all_p_copy.append(torch.tensor(p_copy, dtype=torch.float))
+        all_copy_indices.append(torch.tensor(copy_indices))
+        all_copy_values.append(copy_values)
+
     if corpus_type == "train":  # if corpus is train corpus generate vocabulary
         word_counter = OrderedCounter()
-        for entry in raw_dataset:
-            word_counter.update(entry["summary"])
+        for summary in summaries:
+            word_counter.update(summary)
         for k in list(word_counter.keys()):
             if word_counter[k] < 2:
                 del word_counter[k]  # will replace w/ unk
         vocab = Vocab(word_counter.keys(), eos_and_bos=True)
-    elif path.exists(".cache/planner/vocab.pt"):  # else load vocab
-        vocab = pickle.load(open(".cache/planner/vocab.pt", "rb"))
+    elif path.exists(".cache/generator/vocab.pt"):  # else load vocab
+        vocab = pickle.load(open(".cache/generator/vocab.pt", "rb"))
     else:  # if it doesn't exist create it
-        _, _, vocab = preproc_planner_data("train", extractor, planner, folder, dataset)
+        _, _, _, _, vocab, _ = preproc_generator_data("train", extractor, planner, folder, dataset)
 
     # used by the planner to identify indices of special words
     stats["BOS_INDEX"] = torch.tensor([vocab[BOS_WORD]])
     stats["EOS_INDEX"] = torch.tensor([vocab[EOS_WORD]])
     stats["PAD_INDEX"] = torch.tensor([vocab[PAD_WORD]])
-    summaries = [[vocab[word] for word in entry["summary"]] for entry in raw_dataset]
+    summaries = pad_sequence([torch.tensor([vocab[word] for word in summary])
+                             for summary in summaries], batch_first=True)
+    all_copy_values = pad_sequence([torch.tensor([vocab[val] for val in seq])
+                                   for seq in all_copy_values], batch_first=True)
+    all_p_copy = pad_sequence(all_p_copy, batch_first=True)
+    all_copy_indices = pad_sequence(all_copy_indices, batch_first=True)
 
-    return summaries, content_plans, vocab, stats
+    # wite stuff to disk
+    if not path.exists(".cache/generator"):
+        makedirs(".cache/generator")
+    torch.save(summaries, f".cache/generator/{corpus_type}_summaries.pt")
+    torch.save(all_p_copy, f".cache/generator/{corpus_type}_p_copy.pt")
+    torch.save(all_copy_indices, f".cache/generator/{corpus_type}_copy_indices.pt")
+    torch.save(all_copy_values, f".cache/generator/{corpus_type}_copy_values.pt")
+    torch.save(content_plans, f".cache/generator/{corpus_type}_content_plans.pt")
+    pickle.dump(vocab, open(".cache/generator/vocab.pt", "wb"))
+    pickle.dump(stats, open(".cache/generator/stats.pt", "wb"))
+
+    return summaries, all_p_copy, all_copy_indices, all_copy_values, content_plans, vocab, stats
 
 
 ###############################################################################
@@ -741,7 +850,8 @@ def load_extractor_data(corpus_type, folder="boxscore-data", dataset="rotowire")
 
     except FileNotFoundError:
         print(f"Failed to locate cached {corpus_type} corpus!")
-        type_data, idx2word, idx2type, stats, len_entries, idx_list = preproc_extractor_data(corpus_type, folder, dataset)
+        type_data, idx2word, idx2type, stats, len_entries, idx_list = preproc_extractor_data(
+            corpus_type, folder, dataset)
         sents, entdists, numdists, labels = type_data
 
     return ExtractorDataset(sents, entdists, numdists, labels, idx2word, idx2type, stats, len_entries, idx_list)
@@ -759,19 +869,23 @@ def load_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="r
         records, content_plans, vocab, stats = preproc_planner_data(corpus_type, extractor, folder, dataset)
 
     idx2word = dict(((v, k) for k, v in vocab.items()))
-    return SequenceDataset(records, content_plans, idx2word, stats)
+    return SequenceDataset(records, content_plans, vocab, idx2word, stats)
 
 
 def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data", dataset="rotowire"):
     try:
         summaries = torch.load(f".cache/generator/{corpus_type}_summaries.pt")
+        p_copy = torch.load(f".cache/generator/{corpus_type}_p_copy.pt")
+        copy_indices = torch.load(f".cache/generator/{corpus_type}_copy_indices.pt")
+        copy_values = torch.load(f".cache/generator/{corpus_type}_copy_values.pt")
         content_plans = torch.load(f".cache/generator/{corpus_type}_content_plans.pt")
         vocab = pickle.load(open(".cache/generator/vocab.pt", "rb"))
         stats = pickle.load(open(".cache/generator/stats.pt", "rb"))
 
     except FileNotFoundError:
         print(f"Failed to locate cached {corpus_type} corpus!")
-        summaries, content_plans, vocab, stats = preproc_generator_data(corpus_type, extractor, planner, folder, dataset)
+        summaries, p_copy, copy_indices, copy_values, content_plans, vocab, stats = preproc_generator_data(
+            corpus_type, extractor, planner, folder, dataset)
 
     idx2word = dict(((v, k) for k, v in vocab.items()))
-    return SequenceDataset(summaries, content_plans, idx2word, stats)
+    return CopyDataset(summaries, p_copy, copy_indices, copy_values, content_plans, vocab, idx2word, stats)

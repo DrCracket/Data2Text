@@ -39,6 +39,7 @@ class Extractor(nn.Module, ABC):
         self.eval()
 
         with torch.no_grad():
+            # TODO: super inefficient, remove split operation
             for idx, (sents, entdists, numdists, _) in zip(dataset.idx_list, dataset.split(dataset.len_entries)):
                 predictions = self.forward(sents, entdists, numdists)
                 relations = []

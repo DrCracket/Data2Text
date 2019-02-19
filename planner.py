@@ -39,17 +39,17 @@ class ContentPlanner(nn.Module):
     def forward(self, index, hidden, cell):
         """Content Planning. Uses attention to create pointers to the input records."""
 
-        # size = (batch_size) => size = (batch_size x 1 x hidden_size)
+        # size = (batch_size) => size = (batch_size, 1, hidden_size)
         index = index.view(-1, 1, 1).repeat(1, 1, self.hidden_size)
         input_ = self.selected_content.gather(1, index)
 
-        # size = (batch_size x 1 x hidden_size)
+        # size = (batch_size, 1, hidden_size)
         output, (hidden, cell) = self.rnn(input_, (hidden, cell))
-        # size = (batch_size x hidden_size x records)
+        # size = (batch_size, hidden_size, records)
         content_tp = self.linear2(self.selected_content).transpose(1, 2)
-        # size = (batch_size x 1 x records)
+        # size = (batch_size, 1, records)
         logits = torch.bmm(output, content_tp)
-        # size = (batch_size x records)
+        # size = (batch_size, records)
         attention = F.log_softmax(logits, dim=2).squeeze(1)
 
         return attention, hidden, cell
@@ -57,22 +57,22 @@ class ContentPlanner(nn.Module):
     def select_content(self, records):
         """Content selection gate. Determines importance vis-a-vis other records."""
 
-        # size = (Batch x Records x 4 x hidden_size)
+        # size = (Batch, Records, 4, hidden_size)
         embedded = self.embedding(records)
-        # size = (Batch x Records x 4 * hidden_size)
+        # size = (Batch, Records, 4 * hidden_size)
         emb_cat = embedded.view(embedded.size(0), embedded.size(1), -1)
-        # size = (Batch x Records x hidden_size)
+        # size = (Batch, Records, hidden_size)
         emb_relu = self.relu_mlp(emb_cat)
 
         # compute attention
-        # size = (Batch x hidden_size x Records)
+        # size = (Batch, hidden_size, Records)
         emb_lin = self.linear(emb_relu).transpose(1, 2)
-        # size = (Batch x Records x Records)
+        # size = (Batch, Records, Records)
         logits = torch.bmm(emb_relu, emb_lin)
         attention = F.softmax(logits, dim=2)
 
         # apply attention
-        # size = (Batch x Records x hidden_size)
+        # size = (Batch, Records, hidden_size)
         emb_att = torch.bmm(attention, emb_relu)
         emb_gate = self.sigmoid_mlp(torch.cat((emb_relu, emb_att), 2))
         output = emb_gate * emb_relu
@@ -84,29 +84,31 @@ class ContentPlanner(nn.Module):
         dim1, dim2, dim3 = dataset.sequence.size(0), dataset.sequence.size(1), self.hidden_size
         # size = (#entries, records, hidden_size)
         content_plans = torch.zeros(dim1, dim2, dim3)
+        record_indices = torch.zeros(dim1, dim2, dtype=torch.long)
         self.eval()
 
         with torch.no_grad():
             for dim1 in range(len(dataset)):
                 records, _ = dataset[dim1]
                 hidden, cell = self.init_hidden(records.unsqueeze(0))
-                input_index = dataset.stats["BOS_INDEX"]
+                record_index = dataset.stats["BOS_INDEX"]
                 dim2 = 0
-                while not input_index == dataset.stats["EOS_INDEX"]:
-                    output, hidden, cell = self(input_index, hidden, cell)
-                    input_index = output.argmax(dim=1)
-                    if input_index not in dataset.stats:  # not BOS, EOS, PAD
-                        # size = (1) => size = (1 x 1 x hidden_size)
-                        idx = input_index.view(-1, 1, 1).repeat(1, 1, self.hidden_size)
+                while not record_index == dataset.stats["EOS_INDEX"]:
+                    output, hidden, cell = self(record_index, hidden, cell)
+                    record_index = output.argmax(dim=1)
+                    if record_index not in dataset.stats.values():  # not BOS, EOS, PAD
+                        # size = (1) => size = (1, 1, hidden_size)
+                        idx = record_index.view(-1, 1, 1).repeat(1, 1, self.hidden_size)
                         content_plans[dim1][dim2] = self.selected_content.gather(1, idx)
-                        # print(([dataset.idx2word[idx.item()] for idx in records[input_index].split(1, dim=1)], input_index))
+                        record_indices[dim1][dim2] = record_index
+                        # print(([dataset.idx2word[idx.item()] for idx in records[record_index].split(1, dim=1)], record_index))
                         # stop when content_planner is to long
                         if dim2 < dataset.sequence.size(1) - 1:
                             dim2 += 1
                         else:
                             break
 
-        return content_plans
+        return content_plans, record_indices
 
     def init_hidden(self, records):
         """Compute the initial hidden state and cell state of the Content Planning LSTM.

@@ -13,6 +13,7 @@ from os import path, makedirs
 
 class TextGenerator(nn.Module):
     def __init__(self, word_input_size, word_hidden_size=600, record_hidden_size=600, hidden_size=600):
+        super().__init__()
         self.encoded = None
 
         self.embedding = nn.Embedding(word_input_size, word_hidden_size)
@@ -32,25 +33,27 @@ class TextGenerator(nn.Module):
     def forward(self, word, hidden, cell):
         """Content Planning. Uses attention to create pointers to the input records."""
         # shape = (batch_size, 1, word_hidden_size)
-        embedded = self.embedding(word)
+        embedded = self.embedding(word).unsqueeze(1)
         # output.shape = (batch_size, 1, 2 * hidden_size)
         hidden, (_, cell) = self.decoder_rnn(embedded)
         # shape = (batch_size, 2 * hidden_size, seq_len)
         enc_lin = self.linear(self.encoded).transpose(1, 2)
         # shape = (batch_size, 1, seq_len)
-        attention = F.softmax(torch.bmm(hidden, enc_lin))
+        attention = F.softmax(torch.bmm(hidden, enc_lin), dim=2)
         # shape = (batch_size, 1, 2 * hidden_size)
         selected = torch.bmm(attention, self.encoded)
 
         new_hidden = self.tanh_mlp(torch.cat((hidden, selected), dim=2))
-        out_prob = self.soft_mlp(new_hidden)
-        p_copy = self.sig_copy(new_hidden)
+        out_prob = self.soft_mlp(new_hidden).squeeze(1)
+        p_copy = self.sig_copy(new_hidden).squeeze(1)
+        log_attention = attention.log().squeeze(1)
 
         # shape = (num_layers, num_directions, batch_size, hidden_size)
         new_hidden = new_hidden.view(1, 2, 1, -1)
-        return out_prob, attention.log(), p_copy, new_hidden, cell,
+        return out_prob, log_attention, p_copy, new_hidden, cell,
 
     def encode_recods(self, records):
+        """Use an RNN to encode the record representations from the planning stage."""
         # encoded.shape = (batch_size, seq_len, 2 * hidden_size)
         encoded, (hidden, cell) = self.encoder_rnn(records)
         return encoded, hidden, cell
@@ -61,7 +64,7 @@ class TextGenerator(nn.Module):
         return hidden, cell
 
 
-def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
+def train_generator(extractor, content_planner, epochs=25, learning_rate=0.01, acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     data = load_generator_data("train", extractor, content_planner)
     loader = DataLoader(data, shuffle=True, batch_size=1)  # online learning
 
@@ -77,10 +80,15 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15, a
         optimizer.zero_grad()
         use_teacher_forcing = True if random() < teacher_forcing_ratio else False
 
-        records, text = batch
-        hidden, cell = generator.init_hidden(records)
-        text_iterator = iter(text.t())
-        input_word, _ = next(text_iterator)
+        text, p_copy, content_plan, copy_indices, copy_values = batch
+        # remove all the zero padded values from the content plans
+        non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
+        non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
+        hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
+
+        text_iterator, copy_word, copy_index = zip(text.t(), p_copy.t()), iter(copy_values.t()), iter(copy_indices.t())
+
+        input_word, input_copy_prob = next(text_iterator)
         loss = 0
         len_sequence = 0
 
@@ -91,13 +99,14 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15, a
                     break  # don't continue on the padded values
                 out_prob, copy_prob, p_copy, hidden, cell = generator(
                     input_word, hidden, cell)
-                loss += F.binary_crossentropy(p_copy, copy_tgt)
+                loss += F.binary_cross_entropy(p_copy, copy_tgt.view(-1, 1))
+                print(p_copy)
                 if copy_tgt:
-                    loss += F.nll_loss(out_prob, word)
+                    loss += F.nll_loss(copy_prob, next(copy_index))
                 else:
-                    loss += F.nll_loss(copy_prob, word)
+                    loss += F.nll_loss(out_prob, word)
                 len_sequence += 1
-                input_word = data.copy2vocab[word] if copy_tgt else word
+                input_word = next(copy_word) if copy_tgt else word
         else:
             # Without teacher forcing: use its own predictions as the next input
             for word, copy_tgt in text_iterator:
@@ -105,20 +114,21 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15, a
                     break
                 out_prob, copy_prob, p_copy, hidden, cell = generator(
                     input_word, hidden, cell)
-                loss += F.binary_crossentropy(p_copy, copy_tgt)
+                loss += F.binary_cross_entropy(p_copy, copy_tgt.view(-1, 1))
                 if copy_tgt:
-                    loss += F.nll_loss(out_prob, word)
+                    loss += F.nll_loss(copy_prob, next(copy_index))
                 else:
-                    loss += F.nll_loss(copy_prob, word)
+                    loss += F.nll_loss(out_prob, word)
                 len_sequence += 1
-                if p_copy:
-                    input_word = data.copy2vocab[copy_prob.argmax(dim=1)]
+                if p_copy > 0.5:
+                    input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
                 else:
                     input_word = out_prob.argmax(dim=1)
 
         loss.backward()
         nn.utils.clip_grad_norm_(generator.parameters(), clip)
         optimizer.step()
+        print(loss.item() / len_sequence)
         return loss.item() / len_sequence  # normalize loss for logging
 
     trainer = Engine(_update)
@@ -198,16 +208,18 @@ def eval_generator(extractor, content_planner, generator, test=False):
     evaluator.run(loader)
 
 
-def get_extractor(extractor, content_planner, epochs=25, learning_rate=0.15, acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
-    print("Trying to load cached content selection & planning model...")
-    if path.exists("models/content_planner.pt"):
-        content_planner = torch.load("models/content_planner.pt")
+def get_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
+                  acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
+    print("Trying to load cached content generator model...")
+    if path.exists("models/content_generator.pt"):
+        content_generator = torch.load("models/content_generator.pt")
         print("Success!")
     else:
         print("Failed to locate model.")
         if not path.exists("models"):
             makedirs("models")
-        content_planner = train_generator(extractor, content_planner, epochs, learning_rate, acc_val_init, clip, teacher_forcing_ratio, log_interval)
-        torch.save(content_planner, "models/content_planner.pt")
+        content_planner = train_generator(extractor, content_planner, epochs, learning_rate,
+                                          acc_val_init, clip, teacher_forcing_ratio, log_interval)
+        torch.save(content_generator, "models/content_generator.pt")
 
     return content_planner
