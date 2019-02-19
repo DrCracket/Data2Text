@@ -100,7 +100,6 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.01, a
                 out_prob, copy_prob, p_copy, hidden, cell = generator(
                     input_word, hidden, cell)
                 loss += F.binary_cross_entropy(p_copy, copy_tgt.view(-1, 1))
-                print(p_copy)
                 if copy_tgt:
                     loss += F.nll_loss(copy_prob, next(copy_index))
                 else:
@@ -128,7 +127,6 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.01, a
         loss.backward()
         nn.utils.clip_grad_norm_(generator.parameters(), clip)
         optimizer.step()
-        print(loss.item() / len_sequence)
         return loss.item() / len_sequence  # normalize loss for logging
 
     trainer = Engine(_update)
