@@ -34,7 +34,7 @@ class TextGenerator(nn.Module):
         """Content Planning. Uses attention to create pointers to the input records."""
         # shape = (batch_size, 1, word_hidden_size)
         embedded = self.embedding(word).unsqueeze(1)
-        # output.shape = (batch_size, 1, 2 * hidden_size)
+        # hidden.shape = (batch_size, 1, 2 * hidden_size)
         hidden, (_, cell) = self.decoder_rnn(embedded)
         # shape = (batch_size, 2 * hidden_size, seq_len)
         enc_lin = self.linear(self.encoded).transpose(1, 2)
@@ -64,14 +64,15 @@ class TextGenerator(nn.Module):
         return hidden, cell
 
 
-def train_generator(extractor, content_planner, epochs=25, learning_rate=0.01, acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
+def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
+                    acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     data = load_generator_data("train", extractor, content_planner)
     loader = DataLoader(data, shuffle=True, batch_size=1)  # online learning
 
     generator = TextGenerator(len(data.idx2word))
     optimizer = optim.Adagrad(generator.parameters(), lr=learning_rate, initial_accumulator_value=acc_val_init)
 
-    print("Training a new Content Planner...")
+    print("Training a new Text Generator...")
 
     def _update(engine, batch):
         """Update function for the Conent Selection & Planning Module.
@@ -131,14 +132,13 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.01, a
 
     trainer = Engine(_update)
     # save the model every 4 epochs
-    handler = ModelCheckpoint('.cache/model_cache', 'planner', save_interval=4, require_empty=False)
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, handler, {'planner': generator})
+    handler = ModelCheckpoint('.cache/model_cache', 'generator', save_interval=4, require_empty=False)
+    trainer.add_event_handler(Events.EPOCH_COMPLETED, handler, {'generator': generator})
 
     @trainer.on(Events.ITERATION_COMPLETED)
     def _log_training_loss(engine):
         iteration = engine.state.iteration
         batch_size = loader.batch_size
-
         if iteration * batch_size % log_interval < batch_size:
             epoch = engine.state.epoch
             max_iters = len(loader)
