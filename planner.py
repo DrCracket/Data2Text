@@ -98,7 +98,16 @@ class ContentPlanner(nn.Module):
                 dim2 = 0
                 while not record_index == dataset.stats["EOS_INDEX"]:
                     output, hidden, cell = self(record_index, hidden, cell)
-                    record_index = output.argmax(dim=1)
+                    # in 0.002% of all cases the content plan would be empty. To prevent that use the next likeliest
+                    # record in the distribution that isn't a special record like BOS, EOS, PAD
+                    if dim2 == 0:
+                        _, top = torch.topk(output, 5, dim=1)
+                        for index in top[0]:
+                            if index > 4:
+                                record_index = index
+                                break
+                    else:
+                        record_index = output.argmax(dim=1)
                     if record_index not in dataset.stats.values():  # not BOS, EOS, PAD
                         # size = (1) => size = (1, 1, hidden_size)
                         idx = record_index.view(-1, 1, 1).repeat(1, 1, self.hidden_size)
