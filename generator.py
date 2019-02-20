@@ -90,18 +90,17 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
         text, copy_tgts, content_plan, copy_indices, copy_values = to_device(batch)
         # remove all the zero padded values from the content plans
         non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
-        non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
-        hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
-
-        text_iterator, copy_word, copy_index = zip(text.t(), copy_tgts.t()),
-        iter(copy_values.t()), iter(copy_indices.t())
-
-        input_word, input_copy_prob = next(text_iterator)
-        loss = 0
-        len_sequence = 0
-
         # TODO: find a better countermeasure against empty content_plans
-        if len(content_plan) > 0:
+        if len(non_zero) > 0:
+            non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
+            hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
+
+            text_iterator, copy_word, copy_index = zip(text.t(), copy_tgts.t()), iter(copy_values.t()), iter(copy_indices.t())
+
+            input_word, input_copy_prob = next(text_iterator)
+            loss = 0
+            len_sequence = 0
+
             for word, copy_tgt in text_iterator:
                 if word.cpu() == data.stats["PAD_INDEX"]:
                     break
