@@ -173,7 +173,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
 
     print("Training a new extractor...")
 
-    def update(engine, batch):
+    def _update(engine, batch):
         extractor.train()
         optimizer.zero_grad()
         b_sents, b_ents, b_nums, b_labs = batch
@@ -184,10 +184,10 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
         optimizer.step()
         return loss.item()
 
-    trainer = Engine(update)
+    trainer = Engine(_update)
 
     @trainer.on(Events.ITERATION_COMPLETED)
-    def log_training_loss(engine):
+    def _log_training_loss(engine):
         iteration = engine.state.iteration
         batch_size = loader.batch_size
 
@@ -200,15 +200,15 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
                   .format(progress, epoch, epochs, iteration % max_iters, max_iters, loss))
 
     @trainer.on(Events.EPOCH_COMPLETED)
-    def adapt_lr(engine):
+    def _adapt_lr(engine):
         scheduler.step()
 
     @trainer.on(Events.EPOCH_COMPLETED)
-    def validate(engine):
+    def _validate(engine):
         eval_extractor(extractor)
 
     @trainer.on(Events.COMPLETED)
-    def test(engine):
+    def _test(engine):
         eval_extractor(extractor, test=True)
 
     trainer.run(loader, epochs)
