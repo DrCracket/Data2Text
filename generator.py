@@ -118,7 +118,6 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
                     input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
                 else:
                     input_word = out_prob.argmax(dim=1)
-            break
 
         loss.backward()
         nn.utils.clip_grad_norm_(generator.parameters(), clip)
