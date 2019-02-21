@@ -3,10 +3,13 @@
 # and Text Generation Module                                                  #
 ###############################################################################
 
+import logging
 from extractor import get_extractor
 from planner import get_planner, eval_planner
 from util.generator import load_generator_data
 from generator import get_generator
+
+logging.basicConfig(level=logging.INFO)
 
 extractor = get_extractor()
 planner = get_planner(extractor)

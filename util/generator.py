@@ -6,6 +6,7 @@
 import tarfile
 import pickle
 import torch
+import logging
 from torch.nn.utils.rnn import pad_sequence
 from nltk import sent_tokenize
 from word2number import w2n
@@ -117,7 +118,6 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
 
 
 def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-data", dataset="rotowire"):
-    print(f"Processing summaries and content plans from the {corpus_type} corpus...")
     plan_dataset = load_planner_data(corpus_type, extractor, folder, dataset)
     content_plans, record_indices = make_content_plan(planner, plan_dataset)
     summaries = list()
@@ -188,7 +188,8 @@ def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data",
         vocab = pickle.load(open(".cache/generator/vocab.pt", "rb"))
 
     except FileNotFoundError:
-        print(f"Failed to locate cached {corpus_type} corpus!")
+        logging.warning(f"Failed to locate cached generator {corpus_type} corpus!")
+        logging.info(f"Genrating a new corpus...")
         summaries, p_copy, copy_indices, copy_values, content_plans, vocab = preproc_generator_data(
             corpus_type, extractor, planner, folder, dataset)
 

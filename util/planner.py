@@ -6,6 +6,7 @@
 import tarfile
 import pickle
 import torch
+import logging
 from torch.nn.utils.rnn import pad_sequence
 from word2number import w2n
 from os import path, makedirs
@@ -23,7 +24,6 @@ def extract_relations(extractor, dataset):
     extractor.eval()
 
     with torch.no_grad():
-        # TODO: super inefficient, remove split operation
         for idx, (sents, entdists, numdists, _) in zip(dataset.idx_list, dataset.split(dataset.len_entries)):
             predictions = extractor.forward(sents, entdists, numdists)
             relations = []
@@ -107,7 +107,6 @@ def create_records(entry, vocab=None):
 
 
 def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="rotowire"):
-    print(f"Processing records and content plans from the {corpus_type} corpus...")
     with tarfile.open(f"{folder}/{dataset}.tar.bz2", "r:bz2") as f:
         raw_dataset = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())
 
@@ -184,7 +183,8 @@ def load_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="r
         vocab = pickle.load(open(".cache/planner/vocab.pt", "rb"))
 
     except FileNotFoundError:
-        print(f"Failed to locate cached {corpus_type} corpus!")
+        logging.warning(f"Failed to locate cached content planner {corpus_type} corpus!")
+        logging.info(f"Genrating a new corpus...")
         records, content_plans, vocab = preproc_planner_data(corpus_type, extractor, folder, dataset)
 
     idx2word = dict(((v, k) for k, v in vocab.items()))

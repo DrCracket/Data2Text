@@ -5,7 +5,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from torch import optim
 from random import random
 from torch.utils.data import DataLoader
@@ -14,6 +13,7 @@ from ignite.handlers import ModelCheckpoint
 from util.generator import load_generator_data
 from util.constants import PAD_WORD, BOS_WORD, EOS_WORD
 from os import path, makedirs
+import logging
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -71,12 +71,12 @@ class TextGenerator(nn.Module):
         return hidden, cell
 
 
-def to_device(tensor_list):
-    return [t.to(device, non_blocking=True) for t in tensor_list]
-
 ###############################################################################
 # Training & Evaluation functions                                             #
 ###############################################################################
+
+def to_device(tensor_list):
+    return [t.to(device, non_blocking=True) for t in tensor_list]
 
 
 def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
@@ -87,7 +87,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
     generator = TextGenerator(len(data.idx2word)).to(device)
     optimizer = optim.Adagrad(generator.parameters(), lr=learning_rate, initial_accumulator_value=acc_val_init)
 
-    print("Training a new Text Generator...")
+    logging.info("Training a new Text Generator...")
 
     def _update(engine, batch):
         """Update function for the Text Generation Module.
@@ -147,8 +147,8 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
             max_iters = len(loader)
             progress = 100 * iteration / (max_iters * epochs)
             loss = engine.state.output
-            print("Training Progress {:.2f}% || Epoch: {}/{}, Iteration: {}/{}, Loss: {:.4f}"
-                  .format(progress, epoch, epochs, iteration % max_iters, max_iters, loss))
+            logging.info("Training Progress {:.2f}% || Epoch: {}/{}, Iteration: {}/{}, Loss: {:.4f}"
+                         .format(progress, epoch, epochs, iteration % max_iters, max_iters, loss))
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def _validate(engine):
@@ -159,7 +159,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
         eval_generator(extractor, content_planner, generator, test=True)
 
     trainer.run(loader, epochs)
-    print("Finished training process!")
+    logging.info("Finished training process!")
 
     return generator
 
@@ -196,19 +196,19 @@ def eval_generator(extractor, content_planner, generator, test=False):
                 input_word = out_prob.argmax(dim=1)
             sentence.append(input_word.item())
 
-        print(f"{used_set} Evaluation - Generated Text:\n", " ".join([data.idx2word[idx] for idx in sentence]))
+        logging.info(f"{used_set} Evaluation - Generated Text:\n", " ".join([data.idx2word[idx] for idx in sentence]))
 
     test_random()
 
 
 def get_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
                   acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.8, log_interval=100):
-    print("Trying to load cached content generator model...")
+    logging.info("Trying to load cached content generator model...")
     if path.exists("models/content_generator.pt"):
         content_generator = torch.load("models/content_generator.pt")
-        print("Success!")
+        logging.info("Success!")
     else:
-        print("Failed to locate model.")
+        logging.warning("Failed to locate model.")
         if not path.exists("models"):
             makedirs("models")
         content_generator = train_generator(extractor, content_planner, epochs, learning_rate,

@@ -5,7 +5,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from torch import optim
 from random import random
 from torch.utils.data import DataLoader
@@ -15,6 +14,7 @@ from ignite.metrics import Loss
 from util.planner import load_planner_data
 from util.constants import PAD_WORD
 from os import path, makedirs
+import logging
 
 
 class ContentPlanner(nn.Module):
@@ -39,7 +39,6 @@ class ContentPlanner(nn.Module):
 
     def forward(self, index, hidden, cell):
         """Content Planning. Uses attention to create pointers to the input records."""
-
         # size = (batch_size) => size = (batch_size, 1, hidden_size)
         index = index.view(-1, 1, 1).repeat(1, 1, self.hidden_size)
         input_ = self.selected_content.gather(1, index)
@@ -57,7 +56,6 @@ class ContentPlanner(nn.Module):
 
     def select_content(self, records):
         """Content selection gate. Determines importance vis-a-vis other records."""
-
         # size = (Batch, Records, 4, hidden_size)
         embedded = self.embedding(records)
         # size = (Batch, Records, 4 * hidden_size)
@@ -104,11 +102,12 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
     content_planner = ContentPlanner(len(data.idx2word))
     optimizer = optim.Adagrad(content_planner.parameters(), lr=learning_rate, initial_accumulator_value=acc_val_init)
 
-    print("Training a new Content Planner...")
+    logging.info("Training a new Content Planner...")
 
     def _update(engine, batch):
         """Update function for the Conent Selection & Planning Module.
         Right now only online learning is supported"""
+
         content_planner.train()
         optimizer.zero_grad()
         use_teacher_forcing = True if random() < teacher_forcing_ratio else False
@@ -123,11 +122,9 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
         for record_pointer in content_plan_iterator:
             if record_pointer == data.vocab[PAD_WORD]:
                 break
-            output, hidden, cell = content_planner(
-                input_index, hidden, cell)
+            output, hidden, cell = content_planner(input_index, hidden, cell)
             loss += F.nll_loss(output, record_pointer)
             len_sequence += 1
-
             if use_teacher_forcing:
                 input_index = record_pointer
             else:
@@ -153,8 +150,8 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
             max_iters = len(loader)
             progress = 100 * iteration / (max_iters * epochs)
             loss = engine.state.output
-            print("Training Progress {:.2f}% || Epoch: {}/{}, Iteration: {}/{}, Loss: {:.4f}"
-                  .format(progress, epoch, epochs, iteration % max_iters, max_iters, loss))
+            logging.info("Training Progress {:.2f}% || Epoch: {}/{}, Iteration: {}/{}, Loss: {:.4f}"
+                         .format(progress, epoch, epochs, iteration % max_iters, max_iters, loss))
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def _validate(engine):
@@ -165,7 +162,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
         eval_planner(extractor, content_planner, test=True)
 
     trainer.run(loader, epochs)
-    print("Finished training process!")
+    logging.info("Finished training process!")
 
     return content_planner
 
@@ -183,9 +180,11 @@ def eval_planner(extractor, content_planner, test=False):
     def update(engine, batch):
         """Update function for the Conent Selection & Planning Module.
         Right now only online learning is supported"""
+
         content_planner.eval()
         outputs = list()
         labels = list()
+
         with torch.no_grad():
             records, content_plan = batch
             hidden, cell = content_planner.init_hidden(records)
@@ -195,8 +194,7 @@ def eval_planner(extractor, content_planner, test=False):
             for record_pointer in content_plan_iterator:
                 if record_pointer == data.vocab[PAD_WORD]:
                     break
-                output, hidden, cell = content_planner(
-                    input_index, hidden, cell)
+                output, hidden, cell = content_planner(input_index, hidden, cell)
                 outputs.append(output)
                 labels.append(record_pointer)
                 input_index = output.argmax(dim=1)
@@ -210,25 +208,25 @@ def eval_planner(extractor, content_planner, test=False):
     @evaluator.on(Events.COMPLETED)
     def log_loss(engine):
         loss = engine.state.metrics["loss"]
-        print("{} Results - Avg Loss: {:.4f}".format(used_set, loss))
+        logging.info("{} Results - Avg Loss: {:.4f}".format(used_set, loss))
 
     evaluator.run(loader)
 
 
 def get_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
                 clip=7, teacher_forcing_ratio=1.0, log_interval=100):
-    print("Trying to load cached content selection & planning model...")
+    logging.info("Trying to load cached content selection & planning model...")
     if path.exists("models/content_planner.pt"):
         data = load_planner_data("train", extractor)
         content_planner = ContentPlanner(len(data.idx2word))
         content_planner.load_state_dict(torch.load("models/content_planner.pt"))
-        print("Success!")
+        logging.info("Success!")
     else:
-        print("Failed to locate model.")
+        logging.warning("Failed to locate model.")
         if not path.exists("models"):
             makedirs("models")
-        content_planner = train_planner(extractor, epochs, learning_rate,
-                                        acc_val_init, clip, teacher_forcing_ratio, log_interval)
+        content_planner = train_planner(extractor, epochs, learning_rate, acc_val_init,
+                                        clip, teacher_forcing_ratio, log_interval)
         torch.save(content_planner.state_dict(), "models/content_planner.pt")
 
     return content_planner

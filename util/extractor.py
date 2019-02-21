@@ -2,16 +2,17 @@
 # Provides functions to load and create datasets for the extraction module    #
 ###############################################################################
 
-from json import loads
 import torch
 import tarfile
 import pickle
+import logging
+from json import loads
 from os import path, makedirs
 from .data_structures import Vocab, OrderedCounter, ExtractorDataset
 from .helper_funcs import get_candidate_rels, append_multilabeled_data
 
 
-def preproc_extractor_data(set_type, folder, dataset_name, train_stats=None):
+def preproc_extractor_data(corpus_type, folder, dataset_name, train_stats=None):
     location = f"{folder}/{dataset_name}.tar.bz2"
 
     with tarfile.open(location, 'r:bz2') as f:
@@ -37,13 +38,11 @@ def preproc_extractor_data(set_type, folder, dataset_name, train_stats=None):
             for rel in tup[1]:
                 labeldict.append(rel[2])
 
-    print(f"Generating {set_type} examples from {location}...")
     sents, entdists, numdists, labels, len_entries, idx_list = [], [], [], [], [], []
-    max_len = max((len(tup[0]) for entry in extracted_rel_tups[set_type] for tup in entry))
-    for idx, entry in enumerate(extracted_rel_tups[set_type]):
+    max_len = max((len(tup[0]) for entry in extracted_rel_tups[corpus_type] for tup in entry))
+    for idx, entry in enumerate(extracted_rel_tups[corpus_type]):
         append_multilabeled_data(entry, sents, entdists, numdists, labels,
                                  vocab, labeldict, max_len, len_entries, idx_list, idx)
-    print(f"Generated {len(sents)} {set_type} examples!")
 
     # create tensors from lists
     sents_ts = torch.tensor(sents)
@@ -59,7 +58,7 @@ def preproc_extractor_data(set_type, folder, dataset_name, train_stats=None):
     if not path.exists(".cache/extractor"):
         makedirs(".cache/extractor")
 
-    if set_type != "train":
+    if corpus_type != "train":
         # load the train stats, that are used to remove unseen data from train and test set
         if path.exists(".cache/extractor/stats.pt"):
             # if they are not cached, create them
@@ -70,7 +69,7 @@ def preproc_extractor_data(set_type, folder, dataset_name, train_stats=None):
         # clamp values so no other distances except the ones in the train set occur
         entdists_ts = entdists_ts.clamp(train_stats["min_entd"], train_stats["max_entd"])
         numdists_ts = numdists_ts.clamp(train_stats["min_numd"], train_stats["max_numd"])
-    else:  # the current set_type is "train" so we need to create the train_stats
+    else:  # the current corpus_type is "train" so we need to create the train_stats
         min_entd, max_entd = entdists_ts.min().item(), entdists_ts.max().item()
         min_numd, max_numd = numdists_ts.min().item(), numdists_ts.max().item()
 
@@ -96,12 +95,12 @@ def preproc_extractor_data(set_type, folder, dataset_name, train_stats=None):
     # write dicts, lists and tensors to disk
     idx2word = dict(((v, k) for k, v in vocab.items()))
     idx2type = dict(((v, k) for k, v in labeldict.items()))
-    torch.save(sents_ts, f".cache/extractor/{set_type}_sents.pt")
-    torch.save(entdists_ts, f".cache/extractor/{set_type}_entdists.pt")
-    torch.save(numdists_ts, f".cache/extractor/{set_type}_numdists.pt")
-    torch.save(labels_ts, f".cache/extractor/{set_type}_labels.pt")
-    pickle.dump(len_entries, open(f".cache/extractor/{set_type}_len_entries.pt", "wb"))
-    pickle.dump(idx_list, open(f".cache/extractor/{set_type}_idx_list.pt", "wb"))
+    torch.save(sents_ts, f".cache/extractor/{corpus_type}_sents.pt")
+    torch.save(entdists_ts, f".cache/extractor/{corpus_type}_entdists.pt")
+    torch.save(numdists_ts, f".cache/extractor/{corpus_type}_numdists.pt")
+    torch.save(labels_ts, f".cache/extractor/{corpus_type}_labels.pt")
+    pickle.dump(len_entries, open(f".cache/extractor/{corpus_type}_len_entries.pt", "wb"))
+    pickle.dump(idx_list, open(f".cache/extractor/{corpus_type}_idx_list.pt", "wb"))
     pickle.dump(idx2word, open(".cache/extractor/vocab.pt", "wb"))
     pickle.dump(idx2type, open(".cache/extractor/labels.pt", "wb"))
 
@@ -122,7 +121,8 @@ def load_extractor_data(corpus_type, folder="boxscore-data", dataset="rotowire")
         stats = pickle.load(open(".cache/extractor/stats.pt", "rb"))
 
     except FileNotFoundError:
-        print(f"Failed to locate cached {corpus_type} corpus!")
+        logging.warning(f"Failed to locate cached extractor {corpus_type} corpus!")
+        logging.info(f"Genrating a new corpus...")
         type_data, idx2word, idx2type, stats, len_entries, idx_list = preproc_extractor_data(
             corpus_type, folder, dataset)
         sents, entdists, numdists, labels = type_data
