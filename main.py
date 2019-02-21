@@ -5,7 +5,7 @@
 
 from extractor import get_extractor
 from planner import get_planner, eval_planner
-from data_utils import load_generator_data
+from util.generator import load_generator_data
 from generator import get_generator
 
 extractor = get_extractor()

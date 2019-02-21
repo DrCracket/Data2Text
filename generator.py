@@ -1,3 +1,7 @@
+###############################################################################
+# Text Generation Module                                                      #
+###############################################################################
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,7 +11,8 @@ from random import random
 from torch.utils.data import DataLoader
 from ignite.engine import Engine, Events
 from ignite.handlers import ModelCheckpoint
-from data_utils import load_generator_data
+from util.generator import load_generator_data
+from util.constants import PAD_WORD, BOS_WORD, EOS_WORD
 from os import path, makedirs
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -69,6 +74,10 @@ class TextGenerator(nn.Module):
 def to_device(tensor_list):
     return [t.to(device, non_blocking=True) for t in tensor_list]
 
+###############################################################################
+# Training & Evaluation functions                                             #
+###############################################################################
+
 
 def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
                     acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.8, log_interval=100):
@@ -86,22 +95,21 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
         generator.train()
         optimizer.zero_grad()
         use_teacher_forcing = True if random() < teacher_forcing_ratio else False
-
         text, copy_tgts, content_plan, copy_indices, copy_values = to_device(batch)
+
         # remove all the zero padded values from the content plans
         non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
-
         non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
         hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
 
-        text_iterator, copy_word, copy_index = zip(text.t(), copy_tgts.t()), iter(copy_values.t()), iter(copy_indices.t())
+        text_iter, copy_word, copy_index = zip(text.t(), copy_tgts.t()), iter(copy_values.t()), iter(copy_indices.t())
+        input_word, input_copy_prob = next(text_iter)
 
-        input_word, input_copy_prob = next(text_iterator)
         loss = 0
         len_sequence = 0
 
-        for word, copy_tgt in text_iterator:
-            if word.cpu() == data.stats["PAD_INDEX"]:
+        for word, copy_tgt in text_iter:
+            if word.cpu() == data.vocab[PAD_WORD]:
                 break
             out_prob, copy_prob, p_copy, hidden, cell = generator(
                 input_word, hidden, cell)
@@ -111,11 +119,12 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
             else:
                 loss += F.nll_loss(out_prob, word)
             len_sequence += 1
+
             if use_teacher_forcing:
                 input_word = next(copy_word) if copy_tgt else word
             else:
                 if p_copy > 0.5:
-                    input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
+                    input_word = copy_values[:, copy_prob.argmax(dim=1)].view(-1)
                 else:
                     input_word = out_prob.argmax(dim=1)
 
@@ -169,15 +178,16 @@ def eval_generator(extractor, content_planner, generator, test=False):
         generator.eval()
         batch = iter(loader).next()
         _, _, content_plan, _, copy_values = to_device(batch)
+
         # remove all the zero padded values from the content plans
         non_zero = content_plan.unsqueeze(0).nonzero()[:, 1].unique(sorted=True)
         non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
         hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
 
-        input_word = data.stats["BOS_INDEX"].to(device, non_blocking=True)
+        input_word = data.vocab[BOS_WORD].to(device, non_blocking=True)
 
         sentence = [input_word.item()]
-        while input_word.cpu() != data.stats["EOS_INDEX"] and len(sentence) <= 500:
+        while input_word.cpu() != data.vocab[EOS_WORD] and len(sentence) <= 500:
             out_prob, copy_prob, p_copy, hidden, cell = generator(
                 input_word, hidden, cell)
             if p_copy > 0.5:

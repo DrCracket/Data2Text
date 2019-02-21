@@ -10,7 +10,7 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torch.utils.data import DataLoader
 from ignite.engine import Engine, Events
 from ignite.metrics import Accuracy, Recall
-from data_utils import load_extractor_data
+from util.extractor import load_extractor_data
 from abc import abstractmethod, ABC
 from os import path, makedirs
 
@@ -33,28 +33,6 @@ class Extractor(nn.Module, ABC):
     @abstractmethod
     def forward(self, sents, entdists, numdists):
         pass
-
-    def extract_relations(self, dataset):
-        total_relations = []
-        self.eval()
-
-        with torch.no_grad():
-            # TODO: super inefficient, remove split operation
-            for idx, (sents, entdists, numdists, _) in zip(dataset.idx_list, dataset.split(dataset.len_entries)):
-                predictions = self.forward(sents, entdists, numdists)
-                relations = []
-                for prediction, sent, entdist, numdist in zip(predictions, sents, entdists, numdists):
-                    type_ = dataset.idx2type[prediction.argmax().item()]
-                    entity = []
-                    number = []
-                    for word, ent, num in zip(sent, entdist, numdist):
-                        if ent.item() + dataset.stats["entshift"] == 0:
-                            entity.append(dataset.idx2word[word.item()])
-                        if num.item() + dataset.stats["numshift"] == 0:
-                            number.append(dataset.idx2word[word.item()])
-                    relations.append([" ".join(entity), " ".join(number), type_])
-                total_relations.append((idx, relations))
-        return total_relations
 
 
 class LSTMExtractor(Extractor):
@@ -86,7 +64,8 @@ class LSTMExtractor(Extractor):
         # pack the padded sequence, use sents to calculate sequence lenth for
         # each batch element, because  entdist and numdist aren't zeropadded
         lengths = (sents > 0).sum(dim=1)
-        # sort length tensor and batch  for pad_packed_sequence (reminder: this hacky reordering won't be necessary in pytorch 1.1)
+        # sort length tensor and batch  for pad_packed_sequence 
+        # (reminder: this hacky reordering won't be necessary in pytorch 1.1)
         lengths, perm_idx = lengths.sort(descending=True)
         emb_cat = emb_cat[perm_idx]
 
@@ -159,6 +138,10 @@ class CNNExtractor(Extractor):
         output = self.decoder(self.relu_mlp(conv_cat))
 
         return output.squeeze(1)
+
+###############################################################################
+# Training & Evaluation functions                                             #
+###############################################################################
 
 
 def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000, lstm=False):
