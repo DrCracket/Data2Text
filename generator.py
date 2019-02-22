@@ -206,7 +206,9 @@ def get_generator(extractor, content_planner, epochs=25, learning_rate=0.01,
                   acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     logging.info("Trying to load cached text generator model...")
     if path.exists("models/text_generator.pt"):
-        generator = torch.load("models/text_generator.pt")
+        data = load_generator_data("train", extractor, content_planner)
+        generator = TextGenerator(len(data.idx2word))
+        generator.load_state_dict(torch.load("models/text_generator.pt", map_location="cpu"))
         logging.info("Success!")
     else:
         logging.warning("Failed to locate model.")
@@ -214,6 +216,6 @@ def get_generator(extractor, content_planner, epochs=25, learning_rate=0.01,
             makedirs("models")
         generator = train_generator(extractor, content_planner, epochs, learning_rate,
                                     acc_val_init, clip, teacher_forcing_ratio, log_interval)
-        torch.save(generator, "models/text_generator.pt")
+        torch.save(generator.state_dict(), "models/text_generator.pt")
 
     return generator
