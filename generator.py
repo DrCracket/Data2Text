@@ -55,7 +55,7 @@ class TextGenerator(nn.Module):
         p_copy = self.sig_copy(new_hidden).squeeze(1)
         log_attention = attention.log().squeeze(1)
 
-        # shape = (num_directions, batch_size, hidden_size)
+        # shape = (2, batch_size, hidden_size)
         new_hidden = new_hidden.squeeze(1).view(new_hidden.size(0), 2, -1).transpose(1, 0)
         return out_prob, log_attention, p_copy, new_hidden, cell,
 
@@ -79,8 +79,8 @@ def to_device(tensor_list):
     return [t.to(device, non_blocking=True) for t in tensor_list]
 
 
-def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
-                    acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.8, log_interval=100):
+def train_generator(extractor, content_planner, epochs=25, learning_rate=0.01,
+                    acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     data = load_generator_data("train", extractor, content_planner)
     loader = DataLoader(data, shuffle=True, pin_memory=torch.cuda.is_available())  # online learning
 
@@ -103,7 +103,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
         hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
 
         text_iter, copy_word, copy_index = zip(text.t(), copy_tgts.t()), iter(copy_values.t()), iter(copy_indices.t())
-        input_word, input_copy_prob = next(text_iter)
+        input_word, _ = next(text_iter)
 
         loss = 0
         len_sequence = 0
@@ -124,9 +124,9 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
                 input_word = next(copy_word) if copy_tgt else word
             else:
                 if p_copy > 0.5:
-                    input_word = copy_values[:, copy_prob.argmax(dim=1)].view(-1)
+                    input_word = copy_values[:, copy_prob.argmax(dim=1)].view(-1).detach()
                 else:
-                    input_word = out_prob.argmax(dim=1)
+                    input_word = out_prob.argmax(dim=1).detach()
 
         loss.backward()
         nn.utils.clip_grad_norm_(generator.parameters(), clip)
@@ -185,34 +185,35 @@ def eval_generator(extractor, content_planner, generator, test=False):
         hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
 
         input_word = data.vocab[BOS_WORD].to(device, non_blocking=True)
-
         sentence = [input_word.item()]
-        while input_word.cpu() != data.vocab[EOS_WORD] and len(sentence) <= 500:
-            out_prob, copy_prob, p_copy, hidden, cell = generator(
-                input_word, hidden, cell)
-            if p_copy > 0.5:
-                input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
-            else:
-                input_word = out_prob.argmax(dim=1)
-            sentence.append(input_word.item())
+
+        with torch.no_grad():
+            while input_word.cpu() != data.vocab[EOS_WORD] and len(sentence) <= 500:
+                out_prob, copy_prob, p_copy, hidden, cell = generator(
+                    input_word, hidden, cell)
+                if p_copy > 0.5:
+                    input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
+                else:
+                    input_word = out_prob.argmax(dim=1)
+                sentence.append(input_word.item())
 
         logging.info(f"{used_set} Evaluation - Generated Text:\n", " ".join([data.idx2word[idx] for idx in sentence]))
 
     test_random()
 
 
-def get_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
-                  acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.8, log_interval=100):
-    logging.info("Trying to load cached content generator model...")
-    if path.exists("models/content_generator.pt"):
-        content_generator = torch.load("models/content_generator.pt")
+def get_generator(extractor, content_planner, epochs=25, learning_rate=0.01,
+                  acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
+    logging.info("Trying to load cached text generator model...")
+    if path.exists("models/text_generator.pt"):
+        generator = torch.load("models/text_generator.pt")
         logging.info("Success!")
     else:
         logging.warning("Failed to locate model.")
         if not path.exists("models"):
             makedirs("models")
-        content_generator = train_generator(extractor, content_planner, epochs, learning_rate,
-                                            acc_val_init, clip, teacher_forcing_ratio, log_interval)
-        torch.save(content_generator, "models/content_generator.pt")
+        generator = train_generator(extractor, content_planner, epochs, learning_rate,
+                                    acc_val_init, clip, teacher_forcing_ratio, log_interval)
+        torch.save(generator, "models/text_generator.pt")
 
-    return content_planner
+    return generator
