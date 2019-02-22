@@ -10,9 +10,10 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torch.utils.data import DataLoader
 from ignite.engine import Engine, Events
 from ignite.metrics import Accuracy, Recall
-from data_utils import load_extractor_data
+from util.extractor import load_extractor_data
 from abc import abstractmethod, ABC
 from os import path, makedirs
+import logging
 
 
 class MarginalNLLLoss(nn.Module):
@@ -33,28 +34,6 @@ class Extractor(nn.Module, ABC):
     @abstractmethod
     def forward(self, sents, entdists, numdists):
         pass
-
-    def extract_relations(self, dataset):
-        total_relations = []
-        self.eval()
-
-        with torch.no_grad():
-            # TODO: super inefficient, remove split operation
-            for idx, (sents, entdists, numdists, _) in zip(dataset.idx_list, dataset.split(dataset.len_entries)):
-                predictions = self.forward(sents, entdists, numdists)
-                relations = []
-                for prediction, sent, entdist, numdist in zip(predictions, sents, entdists, numdists):
-                    type_ = dataset.idx2type[prediction.argmax().item()]
-                    entity = []
-                    number = []
-                    for word, ent, num in zip(sent, entdist, numdist):
-                        if ent.item() + dataset.stats["entshift"] == 0:
-                            entity.append(dataset.idx2word[word.item()])
-                        if num.item() + dataset.stats["numshift"] == 0:
-                            number.append(dataset.idx2word[word.item()])
-                    relations.append([" ".join(entity), " ".join(number), type_])
-                total_relations.append((idx, relations))
-        return total_relations
 
 
 class LSTMExtractor(Extractor):
@@ -86,7 +65,8 @@ class LSTMExtractor(Extractor):
         # pack the padded sequence, use sents to calculate sequence lenth for
         # each batch element, because  entdist and numdist aren't zeropadded
         lengths = (sents > 0).sum(dim=1)
-        # sort length tensor and batch  for pad_packed_sequence (reminder: this hacky reordering won't be necessary in pytorch 1.1)
+        # sort length tensor and batch  for pad_packed_sequence
+        # (reminder: this hacky reordering won't be necessary in pytorch 1.1)
         lengths, perm_idx = lengths.sort(descending=True)
         emb_cat = emb_cat[perm_idx]
 
@@ -160,6 +140,10 @@ class CNNExtractor(Extractor):
 
         return output.squeeze(1)
 
+###############################################################################
+# Training & Evaluation functions                                             #
+###############################################################################
+
 
 def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000, lstm=False):
     Model = LSTMExtractor if lstm else CNNExtractor
@@ -171,7 +155,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
     optimizer = optim.SGD(extractor.parameters(), lr=learning_rate)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=decay)
 
-    print("Training a new extractor...")
+    logging.info("Training a new extractor...")
 
     def _update(engine, batch):
         extractor.train()
@@ -196,8 +180,8 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
             max_iters = len(loader)
             progress = 100 * iteration / (max_iters * epochs)
             loss = engine.state.output
-            print("Training Progress {:.2f}% || Epoch: {}/{}, Iteration: {}/{}, Loss: {:.4f}"
-                  .format(progress, epoch, epochs, iteration % max_iters, max_iters, loss))
+            logging.info("Training Progress {:.2f}% || Epoch: {}/{}, Iteration: {}/{}, Loss: {:.4f}"
+                         .format(progress, epoch, epochs, iteration % max_iters, max_iters, loss))
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def _adapt_lr(engine):
@@ -212,7 +196,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
         eval_extractor(extractor, test=True)
 
     trainer.run(loader, epochs)
-    print("Finished training process!")
+    logging.info("Finished training process!")
 
     return extractor
 
@@ -254,22 +238,23 @@ def eval_extractor(extractor, test=False):
     @evaluator.on(Events.COMPLETED)
     def log_validation_results(engine):
         metrics = engine.state.metrics
-        print("{} Results - Avg accuracy: {:.2f}% Avg recall: {:.2f}%"
-              .format(used_set, 100 * metrics["accuracy"], 100 * metrics["recall"]))
+        logging.info("{} Results - Avg accuracy: {:.2f}% Avg recall: {:.2f}%"
+                     .format(used_set, 100 * metrics["accuracy"], 100 * metrics["recall"]))
 
     evaluator.run(loader)
 
 
 def get_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000, lstm=False):
     prefix, Model = ("lstm", LSTMExtractor) if lstm else ("cnn", CNNExtractor)
-    print(f"Trying to load cached {prefix} extractor model...")
+    logging.info(f"Trying to load cached {prefix} extractor model...")
+
     if path.exists(f"models/{prefix}_extractor.pt"):
         data = load_extractor_data("train")
         extractor = Model(data.stats["n_words"], data.stats["max_dist"], num_types=data.stats["n_types"])
         extractor.load_state_dict(torch.load(f"models/{prefix}_extractor.pt"))
-        print("Success!")
+        logging.info("Success!")
     else:
-        print("Failed to locate model.")
+        logging.warning("Failed to locate model.")
         if not path.exists("models"):
             makedirs("models")
         extractor = train_extractor(batch_size, epochs, learning_rate, decay, clip, log_interval, lstm)

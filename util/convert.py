@@ -4,6 +4,7 @@
 # TODO: Update to use archive                                                 #
 ###############################################################################
 
+import logging
 from json import loads
 from tabulate import tabulate
 from random import randrange, choice
@@ -146,7 +147,7 @@ def findByCity(path, files, home_city, vis_city):
         for index, game in enumerate(data):
             if game["home_city"] == home_city and game["vis_city"] == vis_city:
                 description, filename = genDescription(data, file_, index)
-                print("Found match, saved to: " + filename)
+                logging.info("Found match, saved to: " + filename)
 
                 with open(filename, "w") as f:
                     f.write(description)
@@ -161,7 +162,7 @@ def findByName(path, files, home_name, vis_name):
         for index, game in enumerate(data):
             if game["home_name"] == home_name and game["vis_name"] == vis_name:
                 description, filename = genDescription(data, file_, index)
-                print("Found match, saved to: " + filename)
+                logging.info("Found match, saved to: " + filename)
 
                 with open(filename, "w") as f:
                     f.write(description)
