@@ -25,13 +25,14 @@ def make_content_plan(planner, dataset):
     # size = (#entries, records, hidden_size)
     content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dim3)
     record_indices = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dtype=torch.long)
+    bos_tensor = torch.tensor([dataset.vocab[BOS_WORD]])
     planner.eval()
 
     with torch.no_grad():
         for dim1 in range(len(dataset)):
             records, _ = dataset[dim1]
             hidden, cell = planner.init_hidden(records.unsqueeze(0))
-            record_index = dataset.vocab[BOS_WORD]
+            record_index = bos_tensor
             dim2 = 0
             while not record_index == dataset.vocab[EOS_WORD]:
                 output, hidden, cell = planner(record_index, hidden, cell)
