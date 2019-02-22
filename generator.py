@@ -108,6 +108,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.01,
         loss = 0
         len_sequence = 0
 
+        # TODO: use bptt of size 100, like the paper
         for word, copy_tgt in text_iter:
             if word.cpu() == data.vocab[PAD_WORD]:
                 break
@@ -197,7 +198,7 @@ def eval_generator(extractor, content_planner, generator, test=False):
                     input_word = out_prob.argmax(dim=1)
                 sentence.append(input_word.item())
 
-        logging.info(f"{used_set} Evaluation - Generated Text:\n", " ".join([data.idx2word[idx] for idx in sentence]))
+        logging.info(f"{used_set} Evaluation - Generated Text:\n" + " ".join([data.idx2word[idx] for idx in sentence]))
 
     test_random()
 
