@@ -128,7 +128,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
             if use_teacher_forcing:
                 input_index = record_pointer
             else:
-                input_index = output.argmax(dim=1)
+                input_index = output.argmax(dim=1).detach()
 
         loss.backward()
         nn.utils.clip_grad_norm_(content_planner.parameters(), clip)
