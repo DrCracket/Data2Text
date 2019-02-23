@@ -42,7 +42,7 @@ class TextGenerator(nn.Module):
         # shape = (batch_size, 1, word_hidden_size)
         embedded = self.embedding(word).unsqueeze(1)
         # hidden.shape = (batch_size, 1, 2 * hidden_size)
-        hidden, (_, cell) = self.decoder_rnn(embedded)
+        hidden, (_, cell) = self.decoder_rnn(embedded, (hidden, cell))
         # shape = (batch_size, 2 * hidden_size, seq_len)
         enc_lin = self.linear(self.encoded).transpose(1, 2)
         # shape = (batch_size, 1, seq_len)
@@ -108,7 +108,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.01,
         loss = 0
         len_sequence = 0
 
-        # TODO: use bptt of size 100, like the paper
+        # TODO: use bptt of size 100, like the paper proposes
         for word, copy_tgt in text_iter:
             if word.cpu() == data.vocab[PAD_WORD]:
                 break
