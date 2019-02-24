@@ -79,7 +79,7 @@ def to_device(tensor_list):
     return [t.to(device, non_blocking=True) for t in tensor_list]
 
 
-def train_generator(extractor, content_planner, epochs=25, learning_rate=0.01,
+def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
                     acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     data = load_generator_data("train", extractor, content_planner)
     loader = DataLoader(data, shuffle=True, pin_memory=torch.cuda.is_available())  # online learning
@@ -206,7 +206,7 @@ def eval_generator(extractor, content_planner, generator, test=False):
     test_random()
 
 
-def get_generator(extractor, content_planner, epochs=25, learning_rate=0.01,
+def get_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
                   acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     logging.info("Trying to load cached text generator model...")
     if path.exists("models/text_generator.pt"):
