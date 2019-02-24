@@ -102,7 +102,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.01,
         non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
         hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
 
-        text_iter, copy_word, copy_index = zip(text.t(), copy_tgts.t()), iter(copy_values.t()), iter(copy_indices.t())
+        text_iter, copy_index_iter = zip(text.t(), copy_tgts.t()), iter(copy_indices.t())
         input_word, _ = next(text_iter)
 
         loss = 0
@@ -116,13 +116,14 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.01,
                 input_word, hidden, cell)
             loss += F.binary_cross_entropy(p_copy, copy_tgt.view(-1, 1))
             if copy_tgt:
-                loss += F.nll_loss(copy_prob, next(copy_index))
+                copy_index = next(copy_index_iter)
+                loss += F.nll_loss(copy_prob, copy_index)
             else:
                 loss += F.nll_loss(out_prob, word)
             len_sequence += 1
 
             if use_teacher_forcing:
-                input_word = next(copy_word) if copy_tgt else word
+                input_word = copy_values[:, copy_index].view(-1) if copy_tgt else word
             else:
                 if p_copy > 0.5:
                     input_word = copy_values[:, copy_prob.argmax(dim=1)].view(-1).detach()
@@ -178,27 +179,29 @@ def eval_generator(extractor, content_planner, generator, test=False):
     def test_random():
         generator.eval()
         batch = iter(loader).next()
-        _, _, content_plan, _, copy_values = to_device(batch)
+        gold_text, _, content_plan, _, copy_values = to_device(batch)
 
         # remove all the zero padded values from the content plans
-        non_zero = content_plan.unsqueeze(0).nonzero()[:, 1].unique(sorted=True)
+        non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
         non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
         hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
 
         input_word = torch.tensor([data.vocab[BOS_WORD]]).to(device, non_blocking=True)
-        sentence = [input_word.item()]
+        text = [input_word.item()]
 
         with torch.no_grad():
-            while input_word.cpu() != data.vocab[EOS_WORD] and len(sentence) <= 500:
+            while input_word.cpu() != data.vocab[EOS_WORD] and len(text) <= 500:
                 out_prob, copy_prob, p_copy, hidden, cell = generator(
                     input_word, hidden, cell)
                 if p_copy > 0.5:
                     input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
                 else:
                     input_word = out_prob.argmax(dim=1)
-                sentence.append(input_word.item())
+                text.append(input_word.item())
 
-        logging.info(f"{used_set} Evaluation - Generated Text:\n" + " ".join([data.idx2word[idx] for idx in sentence]))
+        logging.info(f"{used_set} Evaluation - Gold Text:\n" + " "
+                     .join([data.idx2word[idx.item()] for idx in gold_text[0] if idx != data.vocab[PAD_WORD]]))
+        logging.info(f"{used_set} Evaluation - Generated Text:\n" + " ".join([data.idx2word[idx] for idx in text]))
 
     test_random()
 
@@ -209,7 +212,7 @@ def get_generator(extractor, content_planner, epochs=25, learning_rate=0.01,
     if path.exists("models/text_generator.pt"):
         data = load_generator_data("train", extractor, content_planner)
         generator = TextGenerator(len(data.idx2word))
-        generator.load_state_dict(torch.load("models/text_generator.pt", map_location="cpu"))
+        # generator.load_state_dict(torch.load("models/text_generator.pt", map_location="cpu"))
         logging.info("Success!")
     else:
         logging.warning("Failed to locate model.")

@@ -89,13 +89,15 @@ class SequenceDataset(Dataset):
     content_plan = None
     idx2word = None
     vocab = None
+    idx_list = None
 
-    def __init__(self, sequence, content_plan, vocab, idx2word):
+    def __init__(self, sequence, content_plan, vocab, idx2word, idx_list):
         super().__init__()
         self.sequence = sequence
         self.content_plan = content_plan
         self.vocab = vocab
         self.idx2word = idx2word
+        self.idx_list = idx_list
 
     def __getitem__(self, idx):
         return (self.sequence[idx], self.content_plan[idx])
@@ -109,8 +111,8 @@ class CopyDataset(SequenceDataset):
     copy_indices = None
     copy_values = None
 
-    def __init__(self, sequence, p_copy, copy_indices, copy_values, content_plan, vocab, idx2word):
-        super().__init__(sequence, content_plan, vocab, idx2word)
+    def __init__(self, sequence, p_copy, copy_indices, copy_values, content_plan, vocab, idx2word, idx_list):
+        super().__init__(sequence, content_plan, vocab, idx2word, idx_list)
         self.p_copy = p_copy
         self.copy_indices = copy_indices
         self.copy_values = copy_values

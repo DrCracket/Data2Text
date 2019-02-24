@@ -72,6 +72,7 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
         if index == vocab[PAD_WORD]:
             break
         all_ents.add(idx2word[records[index][0].item()])
+        copy_values.append(idx2word[records[index][2].item()])
 
     entset = set()
     for entity in all_ents:
@@ -110,7 +111,6 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
                     if ent[2] in identifiers and num[2] == int(value):
                         p_copy[num[0]:num[1]] = [1]
                         copy_indices.append(i)
-                        copy_values.append(idx2word[records[index][2].item()])
                         break
         all_sents.extend(tokes)
         all_p_copy.extend(p_copy)
@@ -129,10 +129,10 @@ def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-dat
     with tarfile.open(f"{folder}/{dataset}.tar.bz2", "r:bz2") as f:
         raw_dataset = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())
 
-    for idx in range(len(plan_dataset)):
+    for idx, rel_idx in enumerate(plan_dataset.idx_list):
         records, _ = plan_dataset[idx]
         entry_indices = record_indices[idx]
-        summary = raw_dataset[idx]["summary"]
+        summary = raw_dataset[rel_idx]["summary"]
 
         summary, p_copy, copy_indices, copy_values = get_copy_probs(summary, entry_indices,
                                                                     records, plan_dataset.vocab, plan_dataset.idx2word)
@@ -174,8 +174,9 @@ def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-dat
     torch.save(all_copy_values, f".cache/generator/{corpus_type}_copy_values.pt")
     torch.save(content_plans, f".cache/generator/{corpus_type}_content_plans.pt")
     pickle.dump(vocab, open(".cache/generator/vocab.pt", "wb"))
+    pickle.dump(plan_dataset.idx_list, open(f".cache/generator/{corpus_type}_idx_list.pt", "wb"))
 
-    return summaries, all_p_copy, all_copy_indices, all_copy_values, content_plans, vocab
+    return summaries, all_p_copy, all_copy_indices, all_copy_values, content_plans, vocab, plan_dataset.idx_list
 
 
 def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data", dataset="rotowire"):
@@ -187,12 +188,13 @@ def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data",
         copy_values = torch.load(f".cache/generator/{corpus_type}_copy_values.pt")
         content_plans = torch.load(f".cache/generator/{corpus_type}_content_plans.pt")
         vocab = pickle.load(open(".cache/generator/vocab.pt", "rb"))
+        idx_list = pickle.load(open(f".cache/generator/{corpus_type}_idx_list.pt", "rb"))
 
     except FileNotFoundError:
         logging.warning(f"Failed to locate cached generator {corpus_type} corpus!")
         logging.info(f"Genrating a new corpus...")
-        summaries, p_copy, copy_indices, copy_values, content_plans, vocab = preproc_generator_data(
+        summaries, p_copy, copy_indices, copy_values, content_plans, vocab, idx_list = preproc_generator_data(
             corpus_type, extractor, planner, folder, dataset)
 
     idx2word = dict(((v, k) for k, v in vocab.items()))
-    return CopyDataset(summaries, p_copy, copy_indices, copy_values, content_plans, vocab, idx2word)
+    return CopyDataset(summaries, p_copy, copy_indices, copy_values, content_plans, vocab, idx2word, idx_list)

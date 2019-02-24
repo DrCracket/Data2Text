@@ -121,7 +121,7 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     elif path.exists(".cache/planner/vocab.pt"):  # else load vocab
         vocab = pickle.load(open(".cache/planner/vocab.pt", "rb"))
     else:  # if it doesn't exist create it
-        _, _, vocab, _ = preproc_planner_data("train", extractor, folder, dataset)
+        _, _, vocab, _, _ = preproc_planner_data("train", extractor, folder, dataset)
 
     # create the folder for the cached files if it does not exist
     if not path.exists(".cache/planner"):
@@ -171,8 +171,9 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     torch.save(records, f".cache/planner/{corpus_type}_records.pt")
     torch.save(content_plans, f".cache/planner/{corpus_type}_content_plans.pt")
     pickle.dump(vocab, open(".cache/planner/vocab.pt", "wb"))
+    pickle.dump(extr_dataset.idx_list, open(f".cache/planner/{corpus_type}_idx_list.pt", "wb"))
 
-    return records, content_plans, vocab
+    return records, content_plans, vocab, extr_dataset.idx_list
 
 
 def load_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="rotowire"):
@@ -181,11 +182,12 @@ def load_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="r
         records = torch.load(f".cache/planner/{corpus_type}_records.pt")
         content_plans = torch.load(f".cache/planner/{corpus_type}_content_plans.pt")
         vocab = pickle.load(open(".cache/planner/vocab.pt", "rb"))
+        idx_list = pickle.load(open(f".cache/planner/{corpus_type}_idx_list.pt", "rb"))
 
     except FileNotFoundError:
         logging.warning(f"Failed to locate cached content planner {corpus_type} corpus!")
         logging.info(f"Genrating a new corpus...")
-        records, content_plans, vocab = preproc_planner_data(corpus_type, extractor, folder, dataset)
+        records, content_plans, vocab, idx_list = preproc_planner_data(corpus_type, extractor, folder, dataset)
 
     idx2word = dict(((v, k) for k, v in vocab.items()))
-    return SequenceDataset(records, content_plans, vocab, idx2word)
+    return SequenceDataset(records, content_plans, vocab, idx2word, idx_list)

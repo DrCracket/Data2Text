@@ -105,7 +105,7 @@ def extract_entities(sent, all_ents, prons, prev_ents=None, resolve_prons=False,
 
 def annoying_number_word(sent, i):
     ignores = ["three point", "three - point", "three - pt", "three pt",
-               "three- pointers", "three - pointer", "three pointers"]
+               "three- pointers", "three - pointer", "three pointers", "three - pointers"]
     return " ".join(sent[i:i + 3]) in ignores or " ".join(sent[i:i + 2]) in ignores
 
 
