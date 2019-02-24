@@ -212,7 +212,7 @@ def get_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
     if path.exists("models/text_generator.pt"):
         data = load_generator_data("train", extractor, content_planner)
         generator = TextGenerator(len(data.idx2word))
-        # generator.load_state_dict(torch.load("models/text_generator.pt", map_location="cpu"))
+        generator.load_state_dict(torch.load("models/text_generator.pt", map_location="cpu"))
         logging.info("Success!")
     else:
         logging.warning("Failed to locate model.")
