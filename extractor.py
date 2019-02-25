@@ -15,21 +15,24 @@ from abc import abstractmethod, ABC
 from os import path, makedirs
 import logging
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class MarginalNLLLoss(nn.Module):
     """ The loss function proposed by Whiteman et al."""
     def forward(self, x, y):
         # calculate the log on all true labels
-        logs = torch.where(y == 1, x.log(), torch.tensor([0], dtype=torch.float))
+        logs = torch.where(y == 1, x.log(), torch.zeros(1))
         return -logs.mean()
 
 
 class Extractor(nn.Module, ABC):
-    def __init__(self, word_input_size, dist_input_size, word_hidden_size, dist_hidden_size):
+    def __init__(self, word_input_size, ent_dist_size, num_dist_size, word_hidden_size, dist_hidden_size):
         super().__init__()
 
         self.word_embedding = nn.Embedding(word_input_size, word_hidden_size)
-        self.dist_embedding = nn.Embedding(dist_input_size, dist_hidden_size)
+        self.ent_embedding = nn.Embedding(ent_dist_size, dist_hidden_size)
+        self.num_embedding = nn.Embedding(num_dist_size, dist_hidden_size)
 
     @abstractmethod
     def forward(self, sents, entdists, numdists):
@@ -37,10 +40,10 @@ class Extractor(nn.Module, ABC):
 
 
 class LSTMExtractor(Extractor):
-    def __init__(self, word_input_size, dist_input_size, word_hidden_size=200, dist_hidden_size=100,
+    def __init__(self, word_input_size, ent_dist_size, num_dist_size, word_hidden_size=200, dist_hidden_size=100,
                  lstm_hidden_size=500, mlp_hidden_size=700, num_types=40, dropout=0.5):
 
-        super().__init__(word_input_size, dist_input_size, word_hidden_size, dist_hidden_size)
+        super().__init__(word_input_size, ent_dist_size, num_dist_size, word_hidden_size, dist_hidden_size)
         self.lstm_hidden_size = lstm_hidden_size
         input_width = word_hidden_size + 2 * dist_hidden_size
 
@@ -58,8 +61,8 @@ class LSTMExtractor(Extractor):
 
     def forward(self, sents, entdists, numdists):
         emb_sents = self.word_embedding(sents)
-        emb_entdists = self.dist_embedding(entdists)
-        emb_numdists = self.dist_embedding(numdists)
+        emb_entdists = self.ent_embedding(entdists)
+        emb_numdists = self.num_embedding(numdists)
         emb_cat = torch.cat((emb_sents, emb_entdists, emb_numdists), 2)
 
         # pack the padded sequence, use sents to calculate sequence lenth for
@@ -85,10 +88,10 @@ class LSTMExtractor(Extractor):
 
 
 class CNNExtractor(Extractor):
-    def __init__(self, word_input_size, dist_input_size, word_hidden_size=200, dist_hidden_size=100,
+    def __init__(self, word_input_size, ent_dist_size, num_dist_size, word_hidden_size=200, dist_hidden_size=100,
                  num_filters=200, mlp_hidden_size=500, num_types=40, dropout=0.5):
 
-        super().__init__(word_input_size, dist_input_size, word_hidden_size, dist_hidden_size)
+        super().__init__(word_input_size, ent_dist_size, num_dist_size, word_hidden_size, dist_hidden_size)
         input_width = word_hidden_size + 2 * dist_hidden_size
 
         self.mask_conv2 = nn.Conv2d(1, num_filters, (2, input_width), padding=(1, 0), bias=False)
@@ -118,8 +121,8 @@ class CNNExtractor(Extractor):
 
     def forward(self, sents, entdists, numdists):
         emb_sents = self.word_embedding(sents)
-        emb_entdists = self.dist_embedding(entdists)
-        emb_numdists = self.dist_embedding(numdists)
+        emb_entdists = self.ent_embedding(entdists)
+        emb_numdists = self.num_embedding(numdists)
         # add 1 dim for 2d convolution
         emb_cat = torch.cat((emb_sents, emb_entdists, emb_numdists), 2).unsqueeze(1)
 
@@ -145,13 +148,17 @@ class CNNExtractor(Extractor):
 ###############################################################################
 
 
+def to_device(tensor_list):
+    return [t.to(device, non_blocking=True) for t in tensor_list]
+
+
 def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000, lstm=False):
     Model = LSTMExtractor if lstm else CNNExtractor
     data = load_extractor_data("train")
-    loader = DataLoader(data, shuffle=True, batch_size=batch_size)
+    loader = DataLoader(data, shuffle=True, batch_size=batch_size, pin_memory=torch.cuda.is_available())
     loss_fn = MarginalNLLLoss()
 
-    extractor = Model(data.stats["n_words"], data.stats["max_dist"], num_types=data.stats["n_types"])
+    extractor = Model(data.stats["n_words"], data.stats["max_dist"], num_types=data.stats["n_types"]).to(device)
     optimizer = optim.SGD(extractor.parameters(), lr=learning_rate)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=decay)
 
@@ -160,7 +167,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
     def _update(engine, batch):
         extractor.train()
         optimizer.zero_grad()
-        b_sents, b_ents, b_nums, b_labs = batch
+        b_sents, b_ents, b_nums, b_labs = to_device(batch)
         y_pred = extractor(b_sents, b_ents, b_nums)
         loss = loss_fn(y_pred, b_labs)
         loss.backward()
@@ -215,14 +222,14 @@ def eval_extractor(extractor, test=False):
         I consider an example as correctly predicted when a label matches."""
         extractor.eval()
         with torch.no_grad():
-            b_sents, b_ents, b_nums, b_labs = batch
+            b_sents, b_ents, b_nums, b_labs = to_device(batch)
             y_pred = extractor(b_sents, b_ents, b_nums)
             loss = loss_fn(y_pred, b_labs)
 
             # transform the multi-label one-hot labels
             idxs_pred = y_pred.argmax(dim=1)
             idxs_lab = b_labs.argmax(dim=1)
-            y = torch.zeros(len(b_labs), dtype=torch.long)
+            y = torch.zeros(len(b_labs), dtype=torch.long, device=device)
             for i in range(len(y)):
                 y[i] = idxs_pred[i] if b_labs[i][idxs_pred[i]] == 1 else idxs_lab[i]
 
@@ -250,8 +257,8 @@ def get_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5
 
     if path.exists(f"models/{prefix}_extractor.pt"):
         data = load_extractor_data("train")
-        extractor = Model(data.stats["n_words"], data.stats["max_dist"], num_types=data.stats["n_types"])
-        extractor.load_state_dict(torch.load(f"models/{prefix}_extractor.pt"))
+        extractor = Model(data.stats["n_words"], data.stats["ent_len"], data.stats["num_len"], num_types=data.stats["n_types"])
+        extractor.load_state_dict(torch.load(f"models/{prefix}_extractor.pt", map_location="cpu"))
         logging.info("Success!")
     else:
         logging.warning("Failed to locate model.")

@@ -78,14 +78,16 @@ def preproc_extractor_data(corpus_type, folder, dataset_name, train_stats=None):
         numshift = min_numd
 
         # the number of entries the distance embedding has to have
-        max_dist = max(max_entd, max_numd) - min(min_entd, min_numd) + 1
+        ent_len = max_entd - min_entd + 1
+        num_len = max_numd - min_numd + 1
 
         n_words = len(vocab)
         n_types = len(labeldict)
 
-        train_stats = {"entshift": entshift, "numshift": numshift, "max_dist": max_dist,
-                       "min_entd": min_entd, "max_entd": max_entd, "min_numd": min_numd,
-                       "max_numd": max_numd, "n_words": n_words, "n_types": n_types}
+        train_stats = {"entshift": entshift, "numshift": numshift, "min_entd": min_entd,
+                       "max_entd": max_entd, "min_numd": min_numd, "max_numd": max_numd,
+                       "ent_len": ent_len, "num_len": num_len, "n_words": n_words,
+                       "n_types": n_types}
         pickle.dump(train_stats, open(".cache/extractor/stats.pt", "wb"))
 
     # shift values to eliminate negative numbers
