@@ -139,8 +139,9 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
 
     trainer = Engine(_update)
     # save the model every 4 epochs
-    handler = ModelCheckpoint('.cache/model_cache', 'planner', save_interval=4, require_empty=False)
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, handler, {'planner': content_planner})
+    handler = ModelCheckpoint(".cache/model_cache", "planner", save_interval=4,
+                              require_empty=False, save_as_state_dict=True)
+    trainer.add_event_handler(Events.EPOCH_COMPLETED, handler, {"planner": content_planner})
 
     @trainer.on(Events.ITERATION_COMPLETED)
     def _log_training_loss(engine):

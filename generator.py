@@ -134,8 +134,9 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
 
     trainer = Engine(_update)
     # save the model every 4 epochs
-    handler = ModelCheckpoint('.cache/model_cache', 'generator', save_interval=4, require_empty=False)
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, handler, {'generator': generator})
+    handler = ModelCheckpoint(".cache/model_cache", "generator", save_interval=4,
+                              require_empty=False, save_as_state_dict=True)
+    trainer.add_event_handler(Events.EPOCH_COMPLETED, handler, {"generator": generator})
 
     @trainer.on(Events.ITERATION_COMPLETED)
     def _log_training_loss(engine):
