@@ -108,7 +108,7 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
                     for piece in entity.split():
                         if len(piece) > 1 and piece not in ["II", "III", "Jr.", "Jr"]:
                             identifiers.add(piece)
-                    if ent[2] in identifiers and num[2] != "N/A" and num[2] == int(value):
+                    if ent[2] in identifiers and value != "N/A" and num[2] == int(value):
                         p_copy[num[0]:num[1]] = [1]
                         copy_indices.append(i)
                         break
@@ -198,3 +198,28 @@ def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data",
 
     idx2word = dict(((v, k) for k, v in vocab.items()))
     return CopyDataset(summaries, p_copy, copy_indices, copy_values, content_plans, vocab, idx2word, idx_list)
+
+
+def generate_text(generator, vocab, idx2word, entry):
+    generator = generator.eval()
+    _, _, content_plan, _, copy_values = entry
+
+    # remove all the zero padded values from the content plans
+    non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
+    non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
+    hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
+
+    input_word = torch.tensor([vocab[BOS_WORD]])
+    text = []
+
+    with torch.no_grad():
+        while input_word.cpu() != vocab[EOS_WORD] and len(text) <= 500:
+            text.append(input_word.item())
+            out_prob, copy_prob, p_copy, hidden, cell = generator(
+                input_word, hidden, cell)
+            if p_copy > 0.5:
+                input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
+            else:
+                input_word = out_prob.argmax(dim=1)
+
+    return [idx2word[idx] for idx in text[1:]]
