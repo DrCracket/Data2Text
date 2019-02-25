@@ -1,7 +1,6 @@
 ###############################################################################
-# Converts RotoWire json data into Markdown                                   #
-# TODO: Add commandline support                                               #
-# TODO: Update to use archive                                                 #
+# Converts game records, gold summaries and generated summaries into the      #
+# easiliy readable and convertible markdown format.                           #
 ###############################################################################
 
 import tarfile
