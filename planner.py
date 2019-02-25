@@ -170,6 +170,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
 
 
 def eval_planner(extractor, content_planner, test=False):
+    content_planner = content_planner.to(device)
     if test:
         used_set = "Test"
         data = load_planner_data("test", extractor)

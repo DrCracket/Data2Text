@@ -164,6 +164,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
 
 
 def eval_generator(extractor, content_planner, generator, test=False):
+    generator = generator.to(device)
     if test:
         used_set = "Test"
         data = load_generator_data("test", extractor, content_planner)

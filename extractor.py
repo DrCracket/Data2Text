@@ -206,6 +206,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.1, decay=0.5, clip
 
 
 def eval_extractor(extractor, test=False):
+    extractor = extractor.to(device)
     loss_fn = MarginalNLLLoss()
     if test:
         used_set = "Test"
