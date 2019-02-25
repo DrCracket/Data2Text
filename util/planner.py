@@ -11,7 +11,6 @@ from torch.nn.utils.rnn import pad_sequence
 from word2number import w2n
 from os import path, makedirs
 from json import loads
-from Levenshtein import setratio
 from .constants import PAD_WORD, UNK_WORD, BOS_WORD, EOS_WORD, NUM_PLAYERS, bs_keys, ls_keys, HOME, AWAY, MAX_RECORDS
 from .data_structures import Vocab, DefaultListOrderedDict, SequenceDataset
 from .helper_funcs import get_player_idxs
@@ -83,6 +82,8 @@ def create_records(entry, vocab=None):
         record = list()
         team = entry["home_line"]["TEAM-NAME"]
         city = entry["home_line"]["TEAM-CITY"]
+        if city == "Los Angeles":
+            city = city + " LA"
         record.append(team)
         record.append(key)
         record.append(entry["home_line"][key])
@@ -95,6 +96,8 @@ def create_records(entry, vocab=None):
         record = list()
         team = entry["vis_line"]["TEAM-NAME"]
         city = entry["vis_line"]["TEAM-CITY"]
+        if city == "Los Angeles":
+            city = city + " LA"
         record.append(team)
         record.append(key)
         record.append(entry["vis_line"][key])
@@ -143,12 +146,11 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
             # NONE-types indicate no relation and shouldn't be used in the content plan,
             # unknown (UNK_WORD) values should be excluded as well
             if type_ != "NONE" and value != UNK_WORD:
-                matched_entity = max(((key, setratio(key.split(),
-                                       entity.split())) for key in entry_records.keys()),
+                matched_entity = max(((key, len(set(key.split()).intersection(entity.split()))) for key in entry_records.keys()),
                                      key=lambda word: word[1])
-                # and if the similarity is reasonable (rule of thumb above 0.5)
+                # and if the similarity is reasonable (if at least one word e.g. surname match)
                 # compare value and type of all records with that entity
-                if matched_entity[1] >= 0.5:
+                if matched_entity[1] >= 1:
                     matched_records = entry_records[matched_entity[0]]
                     for idx, record in matched_records:
                         # if type and values match a record exists and can be
