@@ -221,7 +221,7 @@ def get_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
     if path.exists("models/content_planner.pt"):
         data = load_planner_data("train", extractor)
         content_planner = ContentPlanner(len(data.idx2word))
-        content_planner.load_state_dict(torch.load("models/content_planner.pt"), map_location="cpu")
+        content_planner.load_state_dict(torch.load("models/content_planner.pt", map_location="cpu"))
         logging.info("Success!")
     else:
         logging.warning("Failed to locate model.")
