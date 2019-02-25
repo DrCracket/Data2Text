@@ -16,6 +16,8 @@ from util.constants import PAD_WORD
 from os import path, makedirs
 import logging
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class ContentPlanner(nn.Module):
     def __init__(self, input_size, hidden_size=600):
@@ -94,12 +96,16 @@ class ContentPlanner(nn.Module):
 ###############################################################################
 
 
+def to_device(tensor_list):
+    return [t.to(device, non_blocking=True) for t in tensor_list]
+
+
 def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
                   clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     data = load_planner_data("train", extractor)
-    loader = DataLoader(data, shuffle=True)  # online learning
+    loader = DataLoader(data, shuffle=True, pin_memory=torch.cuda.is_available())  # online learning
 
-    content_planner = ContentPlanner(len(data.idx2word))
+    content_planner = ContentPlanner(len(data.idx2word)).to(device)
     optimizer = optim.Adagrad(content_planner.parameters(), lr=learning_rate, initial_accumulator_value=acc_val_init)
 
     logging.info("Training a new Content Planner...")
@@ -112,7 +118,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
         optimizer.zero_grad()
         use_teacher_forcing = True if random() < teacher_forcing_ratio else False
 
-        records, content_plan = batch
+        records, content_plan = to_device(batch)
         hidden, cell = content_planner.init_hidden(records)
         content_plan_iterator = iter(content_plan.t())
         input_index = next(content_plan_iterator)
@@ -120,7 +126,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
         len_sequence = 0
 
         for record_pointer in content_plan_iterator:
-            if record_pointer == data.vocab[PAD_WORD]:
+            if record_pointer.cpu() == data.vocab[PAD_WORD]:
                 break
             output, hidden, cell = content_planner(input_index, hidden, cell)
             loss += F.nll_loss(output, record_pointer)
@@ -186,13 +192,13 @@ def eval_planner(extractor, content_planner, test=False):
         labels = list()
 
         with torch.no_grad():
-            records, content_plan = batch
+            records, content_plan = to_device(batch)
             hidden, cell = content_planner.init_hidden(records)
             content_plan_iterator = iter(content_plan.t())
             input_index = next(content_plan_iterator)
 
             for record_pointer in content_plan_iterator:
-                if record_pointer == data.vocab[PAD_WORD]:
+                if record_pointer.cpu() == data.vocab[PAD_WORD]:
                     break
                 output, hidden, cell = content_planner(input_index, hidden, cell)
                 outputs.append(output)
@@ -219,7 +225,7 @@ def get_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
     if path.exists("models/content_planner.pt"):
         data = load_planner_data("train", extractor)
         content_planner = ContentPlanner(len(data.idx2word))
-        content_planner.load_state_dict(torch.load("models/content_planner.pt"))
+        content_planner.load_state_dict(torch.load("models/content_planner.pt", map_location="cpu"))
         logging.info("Success!")
     else:
         logging.warning("Failed to locate model.")
