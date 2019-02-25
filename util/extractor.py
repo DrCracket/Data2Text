@@ -77,7 +77,7 @@ def preproc_extractor_data(corpus_type, folder, dataset_name, train_stats=None):
         entshift = min_entd
         numshift = min_numd
 
-        # the number of entries the distance embedding has to have
+        # the number of entries the distance embeddings have to have
         ent_len = max_entd - min_entd + 1
         num_len = max_numd - min_numd + 1
 

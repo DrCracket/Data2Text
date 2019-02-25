@@ -158,7 +158,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
     loader = DataLoader(data, shuffle=True, batch_size=batch_size, pin_memory=torch.cuda.is_available())
     loss_fn = MarginalNLLLoss()
 
-    extractor = Model(data.stats["n_words"], data.stats["max_dist"], num_types=data.stats["n_types"]).to(device)
+    extractor = Model(data.stats["n_words"], data.stats["ent_len"], data.stats["num_len"], num_types=data.stats["n_types"]).to(device)
     optimizer = optim.SGD(extractor.parameters(), lr=learning_rate)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=decay)
 
