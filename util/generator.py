@@ -204,6 +204,7 @@ def generate_text(generator, vocab, idx2word, entry):
     generator = generator.eval()
     _, _, content_plan, _, copy_values = entry
 
+    content_plan, copy_values = content_plan.unsqueeze(0), copy_values.unsqueeze(0)
     # remove all the zero padded values from the content plans
     non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
     non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))

@@ -4,15 +4,18 @@
 # TODO: Update to use archive                                                 #
 ###############################################################################
 
-import logging
+import tarfile
 from json import loads
 from tabulate import tabulate
-from random import randrange, choice
+from random import randrange
+from nltk.tokenize.treebank import TreebankWordDetokenizer
+from .generator import load_generator_data, generate_text
 
 
 def getBoxScore(game):
-    """Reads the boxscores from a json array and converts them to a table"""
-
+    """
+    Reads the boxscores from a json array and converts them to a table
+    """
     header = list()
     table = list()
 
@@ -37,8 +40,9 @@ def getBoxScore(game):
 
 
 def getLineScore(game, type_):
-    """Reads the linescores from a json array and converts them to a table"""
-
+    """
+    Reads the linescores from a json array and converts them to a table
+    """
     header = list()
     table = list()
 
@@ -59,9 +63,10 @@ def getLineScore(game, type_):
 
 
 def getOtherInfo(game):
-    """Reads everything from a json array that is not a boxscore or a
-    linescore and converts it to a table"""
-
+    """
+    Reads everything from a json array that is not a boxscore or a linescore
+    and converts it to a table
+    """
     header = list()
     table = list()
 
@@ -76,29 +81,27 @@ def getOtherInfo(game):
                     stralign="center")
 
 
-def getSummary(game):
-    """Reads the summary from a json array"""
-
+def getSummary(game, gen_summary):
+    """
+    Reads the summary from a json array and tokenizes it
+    Does the same thing for the generated summary
+    """
+    detokenizer = TreebankWordDetokenizer()
     summary = game["summary"]
-    # insert a line break after each 40th word for prettier formatting
-    summary = [word if idx == 0 or idx %
-               40 != 0 else word + " \n" for idx, word in enumerate(summary)]
 
-    # add a whitespace at the beginning for proper formatting
-    return " " + " ".join(summary)
+    return detokenizer.detokenize(summary), detokenizer.detokenize(gen_summary)
 
 
-def genDescription(data, file_, index):
-    """Selects an entry of the json database and saves it as a markdown
-    string"""
-
-    game = data[index]
+def genDescription(game, corpus_type, index, gen_summary):
+    """
+    Selects an entry of the json database and saves it as a markdown string
+    """
     filename = "b_game_{}.md".format(str(index + 1))
     description = str()
 
     # print the title
-    description += "# Basketball Game #{} from {}\n\n\n".format(
-        str(index + 1), file_)
+    description += "# Basketball Game #{} from {} corpus\n\n\n".format(
+        str(index + 1), corpus_type)
 
     # box-scores
     description += "## Box-Scores\n\n"
@@ -116,58 +119,43 @@ def genDescription(data, file_, index):
     description += getOtherInfo(game) + "\n\n\n"
 
     # summary
-    description += "## Summary\n\n"
-    description += getSummary(game)
+    gold_summary, gen_summary = getSummary(game, gen_summary)
+    description += "## Gold Summary\n\n"
+    description += gold_summary + "\n\n\n"
+    description += "## Generated Summary\n\n"
+    description += gen_summary
 
     return description, filename
 
 
-def RWData(path, file_, index=None):
-    """reads the json database and saves a randomly selected entry as a
-    markdown file"""
+def genMdFile(extractor, planner, generator, corpus_type, index=None,
+              folder="boxscore-data", dataset="rotowire"):
+    """
+    Reads the json database and saves a randomly selected entry as a
+    markdown file, if the index is not specified
+    """
+    with tarfile.open(f"{folder}/{dataset}.tar.bz2", "r:bz2") as f:
+        raw_data = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())
+    gen_data = load_generator_data(corpus_type,
+                                   extractor,
+                                   planner,
+                                   folder,
+                                   dataset)
 
-    with open(path + file_) as data:
-        data = loads(data.read())
+    if index is None:
+        index = randrange(0, len(gen_data))
 
-        if index is None:
-            index = randrange(0, len(data))
+    entry = gen_data[index]
+    roto_index = gen_data.idx_list[index]
+    gen_summary = generate_text(generator,
+                                gen_data.vocab,
+                                gen_data.idx2word,
+                                entry)
 
-        description, filename = genDescription(data, file_, index)
+    description, filename = genDescription(raw_data[roto_index],
+                                           corpus_type,
+                                           roto_index,
+                                           gen_summary)
 
-        with open(filename, "w") as file_:
-            file_.write(description)
-
-
-def findByCity(path, files, home_city, vis_city):
-
-    for file_ in files:
-        with open(path + file_) as data:
-            data = loads(data.read())
-
-        for index, game in enumerate(data):
-            if game["home_city"] == home_city and game["vis_city"] == vis_city:
-                description, filename = genDescription(data, file_, index)
-                logging.info("Found match, saved to: " + filename)
-
-                with open(filename, "w") as f:
-                    f.write(description)
-
-
-def findByName(path, files, home_name, vis_name):
-
-    for file_ in files:
-        with open(path + file_) as data:
-            data = loads(data.read())
-
-        for index, game in enumerate(data):
-            if game["home_name"] == home_name and game["vis_name"] == vis_name:
-                description, filename = genDescription(data, file_, index)
-                logging.info("Found match, saved to: " + filename)
-
-                with open(filename, "w") as f:
-                    f.write(description)
-
-
-databases = ["test.json", "train.json", "valid.json"]
-database = choice(databases)
-RWData("rotowire/", database, 1)
+    with open(filename, "w") as file_:
+        file_.write(description)
