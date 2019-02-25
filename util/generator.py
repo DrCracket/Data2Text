@@ -12,7 +12,7 @@ from nltk import sent_tokenize
 from word2number import w2n
 from os import path, makedirs
 from json import loads
-from .constants import number_words
+from .constants import number_words, suffixes, TEXT_MAX_LENGTH
 from .helper_funcs import annoying_number_word, extract_entities, extract_numbers
 from .planner import load_planner_data
 from .constants import PAD_WORD, BOS_WORD, EOS_WORD, MAX_CONTENT_PLAN_LENGTH
@@ -77,7 +77,7 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
     entset = set()
     for entity in all_ents:
         for piece in entity.split(" "):
-            if len(piece) > 1 and piece not in ["II", "III", "Jr.", "Jr"]:
+            if len(piece) > 1 and piece not in suffixes:
                 entset.add(piece)
     all_ents = all_ents | entset
 
@@ -106,12 +106,16 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
                     identifiers = {entity}
                     value = idx2word[records[index][2].item()]
                     for piece in entity.split():
-                        if len(piece) > 1 and piece not in ["II", "III", "Jr.", "Jr"]:
+                        if len(piece) > 1 and piece not in suffixes:
                             identifiers.add(piece)
-                    if ent[2] in identifiers and value != "N/A" and num[2] == int(value):
-                        p_copy[num[0]:num[1]] = [1]
-                        copy_indices.append(i)
-                        break
+                    try:
+                        if ent[2] in identifiers and num[2] == int(value):
+                            p_copy[num[0]:num[1]] = [1]
+                            copy_indices.append(i)
+                            break
+                    # catch the rare case when a record is chosen where the value is not a number (e.g. first name)
+                    except ValueError:
+                        pass
         all_sents.extend(tokes)
         all_p_copy.extend(p_copy)
 
@@ -214,7 +218,7 @@ def generate_text(generator, vocab, idx2word, entry):
     text = []
 
     with torch.no_grad():
-        while input_word.cpu() != vocab[EOS_WORD] and len(text) <= 1000:
+        while input_word.cpu() != vocab[EOS_WORD] and len(text) <= TEXT_MAX_LENGTH:
             text.append(input_word.item())
             out_prob, copy_prob, p_copy, hidden, cell = generator(
                 input_word, hidden, cell)

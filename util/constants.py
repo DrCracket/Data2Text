@@ -25,17 +25,18 @@ bs_keys = ["PLAYER-PLAYER_NAME", "PLAYER-START_POSITION", "PLAYER-MIN", "PLAYER-
            "PLAYER-FG3_PCT", "PLAYER-FTM", "PLAYER-FTA", "PLAYER-FT_PCT", "PLAYER-OREB",
            "PLAYER-DREB", "PLAYER-REB", "PLAYER-AST", "PLAYER-TO", "PLAYER-STL", "PLAYER-BLK",
            "PLAYER-PF", "PLAYER-FIRST_NAME", "PLAYER-SECOND_NAME"]
-
 ls_keys = ["TEAM-PTS_QTR1", "TEAM-PTS_QTR2", "TEAM-PTS_QTR3", "TEAM-PTS_QTR4",
            "TEAM-PTS", "TEAM-FG_PCT", "TEAM-FG3_PCT", "TEAM-FT_PCT", "TEAM-REB",
            "TEAM-AST", "TEAM-TOV", "TEAM-WINS", "TEAM-LOSSES", "TEAM-CITY", "TEAM-NAME"]
+suffixes = ["II", "III", "Jr.", "Jr"]
 
 NUM_PLAYERS = 13
-
 MAX_RECORDS = 2 * NUM_PLAYERS * len(bs_keys) + 2 * len(ls_keys)
 
 # limit the content plan length to forcefully prevent content plans as long as
 # the record table
 MAX_CONTENT_PLAN_LENGTH = 75
+
+TEXT_MAX_LENGTH = 1000
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
