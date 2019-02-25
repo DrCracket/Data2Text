@@ -214,7 +214,7 @@ def generate_text(generator, vocab, idx2word, entry):
     text = []
 
     with torch.no_grad():
-        while input_word.cpu() != vocab[EOS_WORD] and len(text) <= 500:
+        while input_word.cpu() != vocab[EOS_WORD] and len(text) <= 1000:
             text.append(input_word.item())
             out_prob, copy_prob, p_copy, hidden, cell = generator(
                 input_word, hidden, cell)
