@@ -108,7 +108,7 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
                     for piece in entity.split():
                         if len(piece) > 1 and piece not in ["II", "III", "Jr.", "Jr"]:
                             identifiers.add(piece)
-                    if ent[2] in identifiers and num[2] == int(value):
+                    if ent[2] in identifiers and num[2] != "N/A" and num[2] == int(value):
                         p_copy[num[0]:num[1]] = [1]
                         copy_indices.append(i)
                         break
