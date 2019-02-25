@@ -160,7 +160,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
     trainer.run(loader, epochs)
     logging.info("Finished training process!")
 
-    return generator
+    return generator.cpu()
 
 
 def eval_generator(extractor, content_planner, generator, test=False):

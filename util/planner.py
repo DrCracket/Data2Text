@@ -13,7 +13,7 @@ from os import path, makedirs
 from json import loads
 from .constants import PAD_WORD, UNK_WORD, BOS_WORD, EOS_WORD, NUM_PLAYERS, bs_keys, ls_keys, HOME, AWAY, MAX_RECORDS
 from .data_structures import Vocab, DefaultListOrderedDict, SequenceDataset
-from .helper_funcs import get_player_idxs, to_device
+from .helper_funcs import get_player_idxs
 from .extractor import load_extractor_data
 
 
@@ -24,9 +24,9 @@ def extract_relations(extractor, dataset):
 
     with torch.no_grad():
         for idx, (sents, entdists, numdists, _) in zip(dataset.idx_list, dataset.split(dataset.len_entries)):
-            predictions = extractor.forward(*to_device([sents, entdists, numdists]))
+            predictions = extractor.forward(sents, entdists, numdists)
             relations = []
-            for prediction, sent, entdist, numdist in zip(predictions.cpu(), sents, entdists, numdists):
+            for prediction, sent, entdist, numdist in zip(predictions, sents, entdists, numdists):
                 type_ = dataset.idx2type[prediction.argmax().item()]
                 entity = []
                 number = []

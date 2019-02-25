@@ -166,7 +166,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
     trainer.run(loader, epochs)
     logging.info("Finished training process!")
 
-    return content_planner
+    return content_planner.cpu()
 
 
 def eval_planner(extractor, content_planner, test=False):

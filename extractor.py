@@ -201,7 +201,7 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip
     trainer.run(loader, epochs)
     logging.info("Finished training process!")
 
-    return extractor
+    return extractor.cpu()
 
 
 def eval_extractor(extractor, test=False):
