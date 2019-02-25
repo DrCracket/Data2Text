@@ -19,11 +19,12 @@ from util.helper_funcs import to_device
 
 
 class MarginalNLLLoss(nn.Module):
-    """ The loss function proposed by Whiteman et al."""
+    """ The loss function proposed by Whiteman et al. 
+    Though instead of computing the average per dimension in multi-label cases it uses the best prediction"""
     def forward(self, x, y):
         # calculate the log on all true labels
-        logs = torch.where(y == 1, x.log(), torch.zeros(1, device=device))
-        return -logs.mean()
+        logs = torch.where(y == 1, x.log(), torch.tensor([float("-Inf")], device=device))
+        return -logs.max(dim=1)[0].mean()
 
 
 class Extractor(nn.Module, ABC):
@@ -148,7 +149,7 @@ class CNNExtractor(Extractor):
 ###############################################################################
 
 
-def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000, lstm=False):
+def train_extractor(batch_size=32, epochs=10, learning_rate=0.1, decay=0.5, clip=5, log_interval=1000, lstm=False):
     Model = LSTMExtractor if lstm else CNNExtractor
     data = load_extractor_data("train")
     loader = DataLoader(data, shuffle=True, batch_size=batch_size, pin_memory=torch.cuda.is_available())
@@ -247,7 +248,7 @@ def eval_extractor(extractor, test=False):
     evaluator.run(loader)
 
 
-def get_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000, lstm=False):
+def get_extractor(batch_size=32, epochs=10, learning_rate=0.1, decay=0.5, clip=5, log_interval=1000, lstm=False):
     prefix, Model = ("lstm", LSTMExtractor) if lstm else ("cnn", CNNExtractor)
     logging.info(f"Trying to load cached {prefix} extractor model...")
 
