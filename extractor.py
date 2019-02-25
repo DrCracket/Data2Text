@@ -19,7 +19,7 @@ from util.helper_funcs import to_device
 
 
 class MarginalNLLLoss(nn.Module):
-    """ The loss function proposed by Whiteman et al. 
+    """ The loss function proposed by Whiteman et al.
     Though instead of computing the average per dimension in multi-label cases it uses the best prediction"""
     def forward(self, x, y):
         # calculate the log on all true labels
