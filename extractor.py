@@ -254,7 +254,7 @@ def get_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5
     if path.exists(f"models/{prefix}_extractor.pt"):
         data = load_extractor_data("train")
         extractor = Model(data.stats["n_words"], data.stats["ent_len"], data.stats["num_len"], num_types=data.stats["n_types"])
-        extractor.load_state_dict(torch.load(f"models/{prefix}_extractor.pt", map_location="cpu"))
+        extractor.load_state_dict(torch.load(f"models/{prefix}_extractor.pt"), map_location="cpu")
         logging.info("Success!")
     else:
         logging.warning("Failed to locate model.")
