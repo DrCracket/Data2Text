@@ -22,7 +22,7 @@ class MarginalNLLLoss(nn.Module):
     """ The loss function proposed by Whiteman et al."""
     def forward(self, x, y):
         # calculate the log on all true labels
-        logs = torch.where(y == 1, x.log(), torch.zeros(1))
+        logs = torch.where(y == 1, x.log(), torch.zeros(1, device=device))
         return -logs.mean()
 
 
