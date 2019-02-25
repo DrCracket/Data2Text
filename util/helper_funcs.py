@@ -6,7 +6,7 @@
 
 from word2number import w2n
 from nltk import sent_tokenize
-from .constants import singular_prons, plural_prons, number_words, prons, NUM_PLAYERS
+from .constants import singular_prons, plural_prons, number_words, prons, device, NUM_PLAYERS
 from .data_structures import DefaultListOrderedDict
 
 
@@ -305,3 +305,7 @@ def get_player_idxs(entry):
                 vis_players.append(str(i))
                 num_vis += 1
     return home_players, vis_players
+
+
+def to_device(tensor_list):
+    return [t.to(device, non_blocking=True) for t in tensor_list]

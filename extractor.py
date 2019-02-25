@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+import logging
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torch.utils.data import DataLoader
 from ignite.engine import Engine, Events
@@ -13,9 +14,8 @@ from ignite.metrics import Accuracy, Recall
 from util.extractor import load_extractor_data
 from abc import abstractmethod, ABC
 from os import path, makedirs
-import logging
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from util.constants import device
+from util.helper_funcs import to_device
 
 
 class MarginalNLLLoss(nn.Module):
@@ -146,10 +146,6 @@ class CNNExtractor(Extractor):
 ###############################################################################
 # Training & Evaluation functions                                             #
 ###############################################################################
-
-
-def to_device(tensor_list):
-    return [t.to(device, non_blocking=True) for t in tensor_list]
 
 
 def train_extractor(batch_size=32, epochs=10, learning_rate=0.7, decay=0.5, clip=5, log_interval=1000, lstm=False):

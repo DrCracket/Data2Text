@@ -5,6 +5,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import logging
 from torch import optim
 from random import random
 from torch.utils.data import DataLoader
@@ -14,9 +15,8 @@ from ignite.metrics import Loss
 from util.planner import load_planner_data
 from util.constants import PAD_WORD
 from os import path, makedirs
-import logging
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from util.constants import device
+from util.helper_funcs import to_device
 
 
 class ContentPlanner(nn.Module):
@@ -94,10 +94,6 @@ class ContentPlanner(nn.Module):
 ###############################################################################
 # Training & Evaluation functions                                             #
 ###############################################################################
-
-
-def to_device(tensor_list):
-    return [t.to(device, non_blocking=True) for t in tensor_list]
 
 
 def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,

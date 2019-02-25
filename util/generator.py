@@ -17,6 +17,7 @@ from .helper_funcs import annoying_number_word, extract_entities, extract_number
 from .planner import load_planner_data
 from .constants import PAD_WORD, BOS_WORD, EOS_WORD, MAX_CONTENT_PLAN_LENGTH
 from .data_structures import OrderedCounter, Vocab, CopyDataset
+from .helper_funcs import to_device
 
 
 def make_content_plan(planner, dataset):
@@ -30,7 +31,7 @@ def make_content_plan(planner, dataset):
 
     with torch.no_grad():
         for dim1 in range(len(dataset)):
-            records, _ = dataset[dim1]
+            records, _ = to_device(dataset[dim1])
             hidden, cell = planner.init_hidden(records.unsqueeze(0))
             record_index = bos_tensor
             dim2 = 0
@@ -49,8 +50,8 @@ def make_content_plan(planner, dataset):
                 if record_index > 4:  # not PAD, PAD, BOS, EOS
                     # size = (1) => size = (1, 1, hidden_size)
                     idx = record_index.view(-1, 1, 1).repeat(1, 1, planner.hidden_size)
-                    content_plans[dim1][dim2] = planner.selected_content.gather(1, idx)
-                    record_indices[dim1][dim2] = record_index
+                    content_plans[dim1][dim2] = planner.selected_content.gather(1, idx).cpu()
+                    record_indices[dim1][dim2] = record_index.cpu()
                     # stop when content_planner is to long
                     if dim2 < MAX_CONTENT_PLAN_LENGTH - 1:
                         dim2 += 1

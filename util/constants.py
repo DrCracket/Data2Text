@@ -2,6 +2,8 @@
 # Various Constants used throughout the network                               #
 ###############################################################################
 
+import torch
+
 HOME = "HOME"
 AWAY = "AWAY"
 
@@ -35,3 +37,5 @@ MAX_RECORDS = 2 * NUM_PLAYERS * len(bs_keys) + 2 * len(ls_keys)
 # limit the content plan length to forcefully prevent content plans as long as
 # the record table
 MAX_CONTENT_PLAN_LENGTH = 75
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

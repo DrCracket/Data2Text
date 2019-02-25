@@ -5,6 +5,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import logging
 from torch import optim
 from random import random
 from torch.utils.data import DataLoader
@@ -13,9 +14,8 @@ from ignite.handlers import ModelCheckpoint
 from util.generator import load_generator_data
 from util.constants import PAD_WORD, BOS_WORD, EOS_WORD
 from os import path, makedirs
-import logging
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from util.constants import device
+from util.helper_funcs import to_device
 
 
 class TextGenerator(nn.Module):
@@ -74,9 +74,6 @@ class TextGenerator(nn.Module):
 ###############################################################################
 # Training & Evaluation functions                                             #
 ###############################################################################
-
-def to_device(tensor_list):
-    return [t.to(device, non_blocking=True) for t in tensor_list]
 
 
 def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
