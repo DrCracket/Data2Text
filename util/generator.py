@@ -204,7 +204,7 @@ def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data",
     return CopyDataset(summaries, p_copy, copy_indices, copy_values, content_plans, vocab, idx2word, idx_list)
 
 
-def generate_text(generator, vocab, idx2word, entry):
+def generate_text(generator, vocab, idx2word, entry, mark_copied=True):
     generator = generator.eval()
     _, _, content_plan, _, copy_values = entry
 
@@ -219,12 +219,15 @@ def generate_text(generator, vocab, idx2word, entry):
 
     with torch.no_grad():
         while input_word.cpu() != vocab[EOS_WORD] and len(text) <= TEXT_MAX_LENGTH:
-            text.append(input_word.item())
             out_prob, copy_prob, p_copy, hidden, cell = generator(
                 input_word, hidden, cell)
             if p_copy > 0.5:
                 input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
             else:
                 input_word = out_prob.argmax(dim=1)
+            text.append((p_copy > 0.5, input_word.item()))
 
-    return [idx2word[idx] for idx in text[1:]]
+    if mark_copied:  # copied values are marked with bold markdown syntax
+        return ["**" + idx2word[idx] + "**" if p_copy else idx2word[idx] for p_copy, idx in text[:-1]]
+    else:
+        return [idx2word[idx] for _, idx in text[:-1]]
