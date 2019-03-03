@@ -2,6 +2,7 @@ import tarfile
 import torch
 from json import loads
 from abc import abstractmethod, ABC
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from pyxdameraulevenshtein import normalized_damerau_levenshtein_distance
 from .helper_funcs import get_ents, append_candidate_rels, append_multilabeled_data
 from .extractor import load_extractor_data
@@ -244,3 +245,20 @@ class COMetric(ExtractiveMetric):
         acc_dld = 100 * self.dld / self.size if self.size != 0 else 0
 
         return acc_dld
+
+
+class BleuScore():
+
+    bleu = 0
+    size = 0
+    smooth = None
+
+    def __init__(self):
+        self.smooth = SmoothingFunction().method1
+
+    def __call__(self, reference, hypothesis):
+        self.bleu += sentence_bleu([reference], hypothesis, smoothing_function=self.smooth)
+        self.size += 1
+
+    def calculate(self):
+        return 100 * self.bleu / self.size if self.size != 0 else 0

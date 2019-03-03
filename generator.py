@@ -8,7 +8,6 @@ import torch.nn.functional as F
 import logging
 from torch import optim
 from random import random
-from nltk.translate.bleu_score import sentence_bleu
 from torch.utils.data import DataLoader
 from ignite.engine import Engine, Events
 from ignite.handlers import ModelCheckpoint
@@ -17,7 +16,7 @@ from util.constants import PAD_WORD, BOS_WORD, EOS_WORD
 from os import path, makedirs
 from util.constants import device, TEXT_MAX_LENGTH
 from util.helper_funcs import to_device
-from util.metrics import CSMetric, RGMetric, COMetric
+from util.metrics import CSMetric, RGMetric, COMetric, BleuScore
 
 
 class TextGenerator(nn.Module):
@@ -159,10 +158,6 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
             logging.info("Training Progress {:.2f}% || Epoch: {}/{}, Iteration: {}/{}, Loss: {:.4f}"
                          .format(progress, epoch, epochs, iteration % max_iters, max_iters, loss))
 
-    @trainer.on(Events.EPOCH_COMPLETED)
-    def _validate(engine):
-        eval_generator(extractor, content_planner, generator)
-
     @trainer.on(Events.COMPLETED)
     def _test(engine):
         eval_generator(extractor, content_planner, generator, test=True)
@@ -178,7 +173,7 @@ def eval_generator(extractor, content_planner, generator, test=False):
     if test:
         used_set = "Test"
         data = load_generator_data("test", extractor, content_planner)
-        loader = DataLoader(data, shuffle=True)
+        loader = DataLoader(data)
     else:
         used_set = "Validation"
         data = load_generator_data("valid", extractor, content_planner)
@@ -189,6 +184,7 @@ def eval_generator(extractor, content_planner, generator, test=False):
         cs_metric = CSMetric(extractor, "test" if test else "valid")
         rg_metric = RGMetric(extractor, "test" if test else "valid")
         co_metric = COMetric(extractor, "test" if test else "valid")
+        bleu_metric = BleuScore()
         for idx, batch in enumerate(loader):
             gold_text, _, content_plan, _, copy_values = to_device(batch)
 
@@ -220,11 +216,12 @@ def eval_generator(extractor, content_planner, generator, test=False):
             cs_metric(gen_sum, gold_sum, data.idx_list[idx])
             co_metric(gen_sum, gold_sum, data.idx_list[idx])
             rg_metric(gen_sum, data.idx_list[idx])
+            bleu_metric(gold_sum, gen_sum)
 
         logging.info("{} Results - CS Precision: {:.4f}%, CS Recall: {:.4f}%".format(used_set, *cs_metric.calculate()))
         logging.info("{} Results - RG Precision: {:.4f}%, RG #: {:.4f}".format(used_set, *rg_metric.calculate()))
         logging.info("{} Results - Damerau-Levenshtein Distance: {:.4f}%".format(used_set, co_metric.calculate()))
-        logging.info("{} Results - BLEU Score: {:.4f}".format(sentence_bleu([gold_sum], gen_sum)))
+        logging.info("{} Results - BLEU Score: {:.4f}".format(bleu_metric.calculate()))
 
     _evaluate()
 
