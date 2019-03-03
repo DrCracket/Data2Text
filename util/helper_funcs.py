@@ -218,7 +218,7 @@ def get_rels(entry, ents, nums, players, teams, cities):
     return rels
 
 
-def append_candidate_rels(entry, summ, all_ents, prons, players, teams, cities):
+def append_candidate_rels(entry, summ, prons, all_ents, players, teams, cities):
     """
     Appends tuples of form (sentence_tokens, [rels]) to candrels.
     """
@@ -240,9 +240,9 @@ def get_candidate_rels(dataset):
     extracted_stuff = {}
     for corpus_type, entries in dataset.items():
         candrels = []
-        for i, entry in enumerate(entries):
+        for entry in entries:
             summ = " ".join(entry['summary'])
-            candrels.append(append_candidate_rels(entry, summ, all_ents, prons, players, teams, cities))
+            candrels.append(append_candidate_rels(entry, summ, prons, all_ents, players, teams, cities))
 
         extracted_stuff[corpus_type] = candrels
 
@@ -265,8 +265,7 @@ def append_multilabeled_data(entry, sents, entdists, numdists, labels, vocab,
     len_entry = 0
     for tup in entry:
         sent = [vocab[wrd] for wrd in tup[0]]
-        sentlen = len(sent)
-        sent.extend([0] * (max_len - sentlen))
+        sent.extend([0] * (max_len - len(sent)))
         # get all the labels for the same rel
         unique_rels = DefaultListOrderedDict()
         for rel in tup[1]:
