@@ -158,6 +158,10 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
             logging.info("Training Progress {:.2f}% || Epoch: {}/{}, Iteration: {}/{}, Loss: {:.4f}"
                          .format(progress, epoch, epochs, iteration % max_iters, max_iters, loss))
 
+    @trainer.on(Events.EPOCH_COMPLETED)
+    def _validate(engine):
+        eval_generator(extractor, content_planner, generator)
+
     @trainer.on(Events.COMPLETED)
     def _test(engine):
         eval_generator(extractor, content_planner, generator, test=True)
