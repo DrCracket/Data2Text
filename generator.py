@@ -8,14 +8,16 @@ import torch.nn.functional as F
 import logging
 from torch import optim
 from random import random
+from nltk.translate.bleu_score import sentence_bleu
 from torch.utils.data import DataLoader
 from ignite.engine import Engine, Events
 from ignite.handlers import ModelCheckpoint
 from util.generator import load_generator_data
 from util.constants import PAD_WORD, BOS_WORD, EOS_WORD
 from os import path, makedirs
-from util.constants import device
+from util.constants import device, TEXT_MAX_LENGTH
 from util.helper_funcs import to_device
+from util.metrics import CSMetric, RGMetric, COMetric
 
 
 class TextGenerator(nn.Module):
@@ -38,7 +40,9 @@ class TextGenerator(nn.Module):
             nn.Sigmoid())
 
     def forward(self, word, hidden, cell):
-        """Content Planning. Uses attention to create pointers to the input records."""
+        """
+        Content Planning. Uses attention to create pointers to the input records.
+        """
         # shape = (batch_size, 1, word_hidden_size)
         embedded = self.embedding(word).unsqueeze(1)
         # hidden.shape = (batch_size, 1, 2 * hidden_size)
@@ -60,13 +64,17 @@ class TextGenerator(nn.Module):
         return out_prob, log_attention, p_copy, new_hidden, cell,
 
     def encode_recods(self, records):
-        """Use an RNN to encode the record representations from the planning stage."""
+        """
+        Use an RNN to encode the record representations from the planning stage.
+        """
         # encoded.shape = (batch_size, seq_len, 2 * hidden_size)
         encoded, (hidden, cell) = self.encoder_rnn(records)
         return encoded, hidden, cell
 
     def init_hidden(self, records):
-        """Compute the initial hidden state and cell state of the Content Planning LSTM."""
+        """
+        Compute the initial hidden state and cell state of the Content Planning LSTM.
+        """
         self.encoded, hidden, cell = self.encode_recods(records)
         return hidden, cell
 
@@ -87,8 +95,10 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
     logging.info("Training a new Text Generator...")
 
     def _update(engine, batch):
-        """Update function for the Text Generation Module.
-        Right now only online learning is supported"""
+        """
+        Update function for the Text Generation Module.
+        Right now only online learning is supported
+        """
         generator.train()
         optimizer.zero_grad()
         use_teacher_forcing = True if random() < teacher_forcing_ratio else False
@@ -105,7 +115,6 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
         loss = 0
         len_sequence = 0
 
-        # TODO: use bptt of size 100, like the paper proposes
         for word, copy_tgt in text_iter:
             if word.cpu() == data.vocab[PAD_WORD]:
                 break
@@ -173,36 +182,51 @@ def eval_generator(extractor, content_planner, generator, test=False):
     else:
         used_set = "Validation"
         data = load_generator_data("valid", extractor, content_planner)
-        loader = DataLoader(data, shuffle=True)
+        loader = DataLoader(data)
 
-    def test_random():
+    def evaluate():
         generator.eval()
-        batch = iter(loader).next()
-        gold_text, _, content_plan, _, copy_values = to_device(batch)
+        cs_metric = CSMetric(extractor, "test" if test else "valid")
+        rg_metric = RGMetric(extractor, "test" if test else "valid")
+        co_metric = COMetric(extractor, "test" if test else "valid")
+        for idx, batch in enumerate(list(loader)[0:10]):
+            gold_text, _, content_plan, _, copy_values = to_device(batch)
 
-        # remove all the zero padded values from the content plans
-        non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
-        non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
-        hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
+            # remove all the zero padded values from the content plans
+            non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
+            non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
+            hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
 
-        input_word = torch.tensor([data.vocab[BOS_WORD]]).to(device, non_blocking=True)
-        text = [input_word.item()]
+            input_word = torch.tensor([data.vocab[BOS_WORD]]).to(device, non_blocking=True)
+            text = [input_word.item()]
 
-        with torch.no_grad():
-            while input_word.cpu() != data.vocab[EOS_WORD] and len(text) <= 500:
-                out_prob, copy_prob, p_copy, hidden, cell = generator(
-                    input_word, hidden, cell)
-                if p_copy > 0.5:
-                    input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
-                else:
-                    input_word = out_prob.argmax(dim=1)
-                text.append(input_word.item())
+            with torch.no_grad():
+                while input_word.cpu() != data.vocab[EOS_WORD] and len(text) <= TEXT_MAX_LENGTH:
+                    out_prob, copy_prob, p_copy, hidden, cell = generator(
+                        input_word, hidden, cell)
+                    if p_copy > 0.5:
+                        input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
+                    else:
+                        input_word = out_prob.argmax(dim=1)
+                    text.append(input_word.item())
 
-        logging.info(f"{used_set} Evaluation - Gold Text:\n" + " "
-                     .join([data.idx2word[idx.item()] for idx in gold_text[0] if idx != data.vocab[PAD_WORD]]))
-        logging.info(f"{used_set} Evaluation - Generated Text:\n" + " ".join([data.idx2word[idx] for idx in text]))
+            # convert indexes to readable summaries
+            gold_sum = [data.idx2word[idx.item()] for idx in gold_text[0] if
+                        idx not in (data.vocab[BOS_WORD], data.vocab[EOS_WORD],
+                        data.vocab[PAD_WORD])]
+            gen_sum = [data.idx2word[idx] for idx in text[1:-1]]
 
-    test_random()
+            # feed summaries into all metrics
+            cs_metric(gen_sum, gold_sum, data.idx_list[idx])
+            co_metric(gen_sum, gold_sum, data.idx_list[idx])
+            rg_metric(gen_sum, data.idx_list[idx])
+
+        logging.info("{} Results - CS Precision: {:.4f}%, CS Recall: {:.4f}%".format(used_set, *cs_metric.calculate()))
+        logging.info("{} Results - RG Precision: {:.4f}%, RG #: {:.4f}".format(used_set, *rg_metric.calculate()))
+        logging.info("{} Results - Damerau-Levenshtein Distance: {:.4f}%".format(used_set, co_metric.calculate()))
+        logging.info("{} Results - BLEU Score: {:.4f}".format(sentence_bleu([gold_sum], gen_sum)))
+
+    evaluate()
 
 
 def get_generator(extractor, content_planner, epochs=25, learning_rate=0.15,

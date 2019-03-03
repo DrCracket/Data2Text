@@ -12,6 +12,7 @@ tabulate = "*"
 numpy = "*"
 word2number = "*"
 pytorch-ignite = "*"
+pyxdameraulevenshtein = "*"
 
 [requires]
 python_version = "3.7"
