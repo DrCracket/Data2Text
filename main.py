@@ -12,7 +12,7 @@ from util.pretty_print import genMdFile
 
 logging.basicConfig(level=logging.INFO)
 
-extractor = get_extractor()
+extractor = get_extractor(lstm=True)
 planner = get_planner(extractor)
 generator = get_generator(extractor, planner)
 
