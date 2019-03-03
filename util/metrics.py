@@ -6,7 +6,7 @@ from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from pyxdameraulevenshtein import normalized_damerau_levenshtein_distance
 from .helper_funcs import get_ents, append_candidate_rels, append_multilabeled_data
 from .extractor import load_extractor_data
-from .constants import prons, ls_keys, bs_keys
+from .constants import prons, ls_keys, bs_keys, device
 from .data_structures import Vocab
 from collections import OrderedDict
 
@@ -31,7 +31,7 @@ class ExtractiveMetric(ABC):
         self.idx2type = extractor_data.idx2type
         self.labeldict = dict(((v, k) for k, v in self.idx2type.items()))
         self.stats = extractor_data.stats
-        self.extractor = extractor
+        self.extractor = extractor.to(device)
         self.vocab = Vocab()
         for k, v in sorted(extractor_data.idx2word.items())[2:]:
             self.vocab[v] = k
@@ -52,9 +52,9 @@ class ExtractiveMetric(ABC):
                                  self.vocab, self.labeldict,
                                  max_len, [], [], -1)
         # create tensors from lists
-        sents_ts = torch.tensor(sents)
-        entdists_ts = torch.tensor(entdists)
-        numdists_ts = torch.tensor(numdists)
+        sents_ts = torch.tensor(sents, device=device)
+        entdists_ts = torch.tensor(entdists, device=device)
+        numdists_ts = torch.tensor(numdists, device=device)
 
         # clamp values so no other distances except the ones in the train set occur
         entdists_ts = entdists_ts.clamp(self.stats["min_entd"], self.stats["max_entd"])
