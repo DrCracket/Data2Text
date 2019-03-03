@@ -184,12 +184,12 @@ def eval_generator(extractor, content_planner, generator, test=False):
         data = load_generator_data("valid", extractor, content_planner)
         loader = DataLoader(data)
 
-    def evaluate():
+    def _evaluate():
         generator.eval()
         cs_metric = CSMetric(extractor, "test" if test else "valid")
         rg_metric = RGMetric(extractor, "test" if test else "valid")
         co_metric = COMetric(extractor, "test" if test else "valid")
-        for idx, batch in enumerate(list(loader)[0:10]):
+        for idx, batch in enumerate(loader):
             gold_text, _, content_plan, _, copy_values = to_device(batch)
 
             # remove all the zero padded values from the content plans
@@ -226,7 +226,7 @@ def eval_generator(extractor, content_planner, generator, test=False):
         logging.info("{} Results - Damerau-Levenshtein Distance: {:.4f}%".format(used_set, co_metric.calculate()))
         logging.info("{} Results - BLEU Score: {:.4f}".format(sentence_bleu([gold_sum], gen_sum)))
 
-    evaluate()
+    _evaluate()
 
 
 def get_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
