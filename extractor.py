@@ -19,8 +19,10 @@ from util.helper_funcs import to_device
 
 
 class MarginalNLLLoss(nn.Module):
-    """ The loss function proposed by Whiteman et al.
-    Though instead of computing the average per dimension in multi-label cases it uses the best prediction"""
+    """
+    The loss function proposed by Whiteman et al.
+    Though instead of computing the average per dimension in multi-label cases it uses the best prediction
+    """
     def forward(self, x, y):
         # calculate the log on all true labels
         logs = torch.where(y == 1, x.log(), torch.tensor([float("-Inf")], device=device))
@@ -216,8 +218,10 @@ def eval_extractor(extractor, test=False):
         loader = DataLoader(load_extractor_data("valid"), batch_size=1000)
 
     def _update(engine, batch):
-        """Transform the multi-label one-hot labels to multiclass indexes.
-        I consider an example as correctly predicted when a label matches."""
+        """
+        Transform the multi-label one-hot labels to multiclass indexes.
+        I consider an example as correctly predicted when a label matches.
+        """
         extractor.eval()
         with torch.no_grad():
             b_sents, b_ents, b_nums, b_labs = to_device(batch)

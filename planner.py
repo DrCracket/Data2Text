@@ -40,7 +40,9 @@ class ContentPlanner(nn.Module):
         self.linear2 = nn.Linear(hidden_size, hidden_size)
 
     def forward(self, index, hidden, cell):
-        """Content Planning. Uses attention to create pointers to the input records."""
+        """
+        Content Planning. Uses attention to create pointers to the input records.
+        """
         # size = (batch_size) => size = (batch_size, 1, hidden_size)
         index = index.view(-1, 1, 1).repeat(1, 1, self.hidden_size)
         input_ = self.selected_content.gather(1, index)
@@ -57,7 +59,9 @@ class ContentPlanner(nn.Module):
         return attention, hidden, cell
 
     def select_content(self, records):
-        """Content selection gate. Determines importance vis-a-vis other records."""
+        """
+        Content selection gate. Determines importance vis-a-vis other records.
+        """
         # size = (Batch, Records, 4, hidden_size)
         embedded = self.embedding(records)
         # size = (Batch, Records, 4 * hidden_size)
@@ -81,8 +85,10 @@ class ContentPlanner(nn.Module):
         return output
 
     def init_hidden(self, records):
-        """Compute the initial hidden state and cell state of the Content Planning LSTM.
-        Additionally initialize a mask to mask out the padded values of the LSTM inputs."""
+        """
+        Compute the initial hidden state and cell state of the Content Planning LSTM.
+        Additionally initialize a mask to mask out the padded values of the LSTM inputs.
+        """
         self.selected_content = self.select_content(records)
         self.mask = records.max(dim=2)[0] == 0
         # transpose first and second dim, because LSTM expects seq_len first
@@ -107,8 +113,10 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
     logging.info("Training a new Content Planner...")
 
     def _update(engine, batch):
-        """Update function for the Conent Selection & Planning Module.
-        Right now only online learning is supported"""
+        """
+        Update function for the Conent Selection & Planning Module.
+        Right now only online learning is supported
+        """
 
         content_planner.train()
         optimizer.zero_grad()
@@ -182,8 +190,10 @@ def eval_planner(extractor, content_planner, test=False):
         loader = DataLoader(data, batch_size=1)
 
     def update(engine, batch):
-        """Update function for the Conent Selection & Planning Module.
-        Right now only online learning is supported"""
+        """
+        Update function for the Conent Selection & Planning Module.
+        Right now only online learning is supported
+        """
 
         content_planner.eval()
         outputs = list()
