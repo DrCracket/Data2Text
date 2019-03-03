@@ -221,7 +221,7 @@ def eval_generator(extractor, content_planner, generator, test=False):
         logging.info("{} Results - CS Precision: {:.4f}%, CS Recall: {:.4f}%".format(used_set, *cs_metric.calculate()))
         logging.info("{} Results - RG Precision: {:.4f}%, RG #: {:.4f}".format(used_set, *rg_metric.calculate()))
         logging.info("{} Results - Damerau-Levenshtein Distance: {:.4f}%".format(used_set, co_metric.calculate()))
-        logging.info("{} Results - BLEU Score: {:.4f}".format(bleu_metric.calculate()))
+        logging.info("{} Results - BLEU Score: {:.4f}".format(used_set, bleu_metric.calculate()))
 
     _evaluate()
 
