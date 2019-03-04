@@ -23,7 +23,6 @@ class ContentPlanner(nn.Module):
     def __init__(self, input_size, hidden_size=600):
         super(ContentPlanner, self).__init__()
         self.hidden_size = hidden_size
-        self.mask = None
         self.selected_content = None
 
         self.embedding = nn.Embedding(input_size, hidden_size)
@@ -87,10 +86,8 @@ class ContentPlanner(nn.Module):
     def init_hidden(self, records):
         """
         Compute the initial hidden state and cell state of the Content Planning LSTM.
-        Additionally initialize a mask to mask out the padded values of the LSTM inputs.
         """
         self.selected_content = self.select_content(records)
-        self.mask = records.max(dim=2)[0] == 0
         # transpose first and second dim, because LSTM expects seq_len first
         hidden = torch.mean(self.selected_content, dim=1, keepdim=True).transpose(0, 1)
         cell = torch.zeros_like(hidden)
