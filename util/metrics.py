@@ -1,3 +1,9 @@
+###############################################################################
+# Contains implementations of the content selection, relation generation &    #
+# content ordering metrics proposed in https://arxiv.org/pdf/1707.08052.pdf.  #
+# Also contains a wrapper around nltk's bleu score implementation             #
+###############################################################################
+
 import tarfile
 import torch
 from json import loads
