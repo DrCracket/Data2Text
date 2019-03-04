@@ -12,7 +12,7 @@ from nltk import sent_tokenize
 from word2number import w2n
 from os import path, makedirs
 from json import loads
-from .constants import number_words, suffixes, TEXT_MAX_LENGTH
+from .constants import number_words, suffixes, device, to_device, TEXT_MAX_LENGTH
 from .helper_funcs import annoying_number_word, extract_entities, extract_numbers
 from .planner import load_planner_data
 from .constants import PAD_WORD, BOS_WORD, EOS_WORD, MAX_CONTENT_PLAN_LENGTH
@@ -20,17 +20,19 @@ from .data_structures import OrderedCounter, Vocab, CopyDataset
 
 
 def make_content_plan(planner, dataset):
-    """Generate a content plan with a trained content planner for the generator."""
+    """
+    Generate a content plan with a trained content planner for the generator.
+    """
     dim1, dim2, dim3 = dataset.sequence.size(0), dataset.sequence.size(1), planner.hidden_size
     # size = (#entries, records, hidden_size)
-    content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dim3)
-    record_indices = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dtype=torch.long)
-    bos_tensor = torch.tensor([dataset.vocab[BOS_WORD]])
+    content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dim3, device=device)
+    record_indices = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dtype=torch.long, device=device)
+    bos_tensor = torch.tensor([dataset.vocab[BOS_WORD]], device=device)
     planner.eval()
 
     with torch.no_grad():
         for dim1 in range(len(dataset)):
-            records, _ = dataset[dim1]
+            records, _ = to_device(dataset[dim1])
             hidden, cell = planner.init_hidden(records.unsqueeze(0))
             record_index = bos_tensor
             dim2 = 0
@@ -57,11 +59,13 @@ def make_content_plan(planner, dataset):
                     else:
                         break
 
-    return content_plans, record_indices
+    return content_plans.cpu(), record_indices.cpu()
 
 
 def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
-    """ Extract the probabilities of which words are copied from the dataset"""
+    """
+    Extract the probabilities of which words are copied from the dataset
+    """
     all_ents = set()
     all_sents = list()
     all_p_copy = list()
@@ -85,6 +89,7 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
         tokes = list()
         split_sent = sent.split(" ")
         for i, word in enumerate(split_sent):
+            # replace every number word with the corresponding digits
             if word in number_words and not annoying_number_word(split_sent, i):
                 j = 1
                 while i + j < len(split_sent) and split_sent in number_words and not annoying_number_word(split_sent,
@@ -108,14 +113,10 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
                     for piece in entity.split():
                         if len(piece) > 1 and piece not in suffixes:
                             identifiers.add(piece)
-                    try:
-                        if ent[2] in identifiers and num[2] == int(value):
-                            p_copy[num[0]:num[1]] = [1]
-                            copy_indices.append(i)
-                            break
-                    # catch the rare case when a record is chosen where the value is not a number (e.g. first name)
-                    except ValueError:
-                        pass
+                    if ent[2] in identifiers and str(num[2]) == value:
+                        p_copy[num[0]:num[1]] = [1]
+                        copy_indices.append(i)
+                        break
         all_sents.extend(tokes)
         all_p_copy.extend(p_copy)
 
@@ -184,7 +185,9 @@ def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-dat
 
 
 def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data", dataset="rotowire"):
-    """Load a dataset e.g. for use with a dataloader"""
+    """
+    Load a dataset e.g. for use with a dataloader
+    """
     try:
         summaries = torch.load(f".cache/generator/{corpus_type}_summaries.pt")
         p_copy = torch.load(f".cache/generator/{corpus_type}_p_copy.pt")
