@@ -107,7 +107,9 @@ class ExtractiveMetric(ABC):
                     entities.extend([home_team, vis_team])
                     matched_entity = max(((entity, len(set(entity.split()).intersection(ent[2].split())))
                                           for entity in entities), key=lambda word: word[1])
-                    extracted.append((matched_entity[0], num[2], label))
+                    # in rare cases players aren't in the current entry, so we can't find the entity
+                    identifier = matched_entity[0] if matched_entity[1] > 0 else ent[2]
+                    extracted.append((identifier, num[2], label))
 
         return extracted
 
