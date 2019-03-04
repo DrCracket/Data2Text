@@ -11,9 +11,9 @@ from torch.nn.utils.rnn import pad_sequence
 from word2number import w2n
 from os import path, makedirs
 from json import loads
-from .constants import PAD_WORD, UNK_WORD, BOS_WORD, EOS_WORD, NUM_PLAYERS, bs_keys, ls_keys, HOME, AWAY, MAX_RECORDS
+from .constants import PAD_WORD, UNK_WORD, BOS_WORD, EOS_WORD, NUM_PLAYERS, bs_keys, ls_keys, device, HOME, AWAY, MAX_RECORDS
 from .data_structures import Vocab, DefaultListOrderedDict, SequenceDataset
-from .helper_funcs import get_player_idxs
+from .helper_funcs import get_player_idxs, to_device
 from .extractor import load_extractor_data
 
 
@@ -21,9 +21,11 @@ def extract_relations(extractor, dataset):
     """Use a trained extractor to extract relations for the content planner"""
     total_relations = []
     extractor.eval()
+    extractor.to(device)
 
     with torch.no_grad():
         for idx, (sents, entdists, numdists, _) in zip(dataset.idx_list, dataset.split(dataset.len_entries)):
+            sents, entdists, numdists = to_device([sents, entdists, numdists])
             predictions = extractor.forward(sents, entdists, numdists)
             relations = []
             for prediction, sent, entdist, numdist in zip(predictions, sents, entdists, numdists):
