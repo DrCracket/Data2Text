@@ -28,7 +28,7 @@ class ContentPlanner(nn.Module):
         self.embedding = nn.Embedding(input_size, hidden_size)
         self.relu_mlp = nn.Sequential(
             nn.Linear(4 * hidden_size, hidden_size),
-            nn.ReLU())
+            nn.LeakyReLU())
 
         self.linear = nn.Linear(hidden_size, hidden_size)
         self.sigmoid_mlp = nn.Sequential(
