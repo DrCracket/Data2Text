@@ -18,18 +18,23 @@ from .extractor import load_extractor_data
 
 
 def extract_relations(extractor, dataset):
-    """Use a trained extractor to extract relations for the content planner"""
+    """
+    Use a trained extractor to extract relations for the content planner
+    """
     total_relations = []
     extractor.eval()
     extractor.to(device)
 
     with torch.no_grad():
-        for idx, (sents, entdists, numdists, _) in zip(dataset.idx_list, dataset.split(dataset.len_entries)):
-            sents, entdists, numdists = to_device([sents, entdists, numdists])
+        for idx, (sents, entdists, numdists, labels) in zip(dataset.idx_list, dataset.split(dataset.len_entries)):
+            sents, entdists, numdists, labels = to_device([sents, entdists, numdists, labels])
             predictions = extractor.forward(sents, entdists, numdists)
             relations = []
-            for prediction, sent, entdist, numdist in zip(predictions, sents, entdists, numdists):
-                type_ = dataset.idx2type[prediction.argmax().item()]
+            for prediction, sent, entdist, numdist, label in zip(predictions, sents, entdists, numdists, labels):
+                if label.sum() == 1:  # only use the predicitons when the analytical value is ambiguous
+                    type_ = dataset.idx2type[label.argmax().item()]
+                else:
+                    type_ = dataset.idx2type[prediction.argmax().item()]
                 entity = []
                 number = []
                 for word, ent, num in zip(sent, entdist, numdist):
@@ -43,8 +48,9 @@ def extract_relations(extractor, dataset):
 
 
 def add_special_records(records, idx):
-    """special records for enabling pointing to bos and eos in first stage"""
-
+    """
+    special records for enabling pointing to bos and eos in first stage
+    """
     # add two Padding Records, so that record indices match with vocab indices
     for entity in (PAD_WORD, PAD_WORD, BOS_WORD, EOS_WORD):
         record = []
@@ -181,7 +187,9 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
 
 
 def load_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="rotowire"):
-    """Load a dataset e.g. for use with a dataloader"""
+    """
+    Load a dataset e.g. for use with a dataloader
+    """
     try:
         records = torch.load(f".cache/planner/{corpus_type}_records.pt")
         content_plans = torch.load(f".cache/planner/{corpus_type}_content_plans.pt")
