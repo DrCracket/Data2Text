@@ -12,8 +12,8 @@ from nltk import sent_tokenize
 from word2number import w2n
 from os import path, makedirs
 from json import loads
-from .constants import number_words, suffixes, device, to_device, TEXT_MAX_LENGTH
-from .helper_funcs import annoying_number_word, extract_entities, extract_numbers
+from .constants import number_words, suffixes, device, TEXT_MAX_LENGTH
+from .helper_funcs import annoying_number_word, extract_entities, extract_numbers, to_device
 from .planner import load_planner_data
 from .constants import PAD_WORD, BOS_WORD, EOS_WORD, MAX_CONTENT_PLAN_LENGTH
 from .data_structures import OrderedCounter, Vocab, CopyDataset
@@ -29,6 +29,7 @@ def make_content_plan(planner, dataset):
     record_indices = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dtype=torch.long, device=device)
     bos_tensor = torch.tensor([dataset.vocab[BOS_WORD]], device=device)
     planner.eval()
+    planner.to(device)
 
     with torch.no_grad():
         for dim1 in range(len(dataset)):
@@ -44,11 +45,12 @@ def make_content_plan(planner, dataset):
                     _, top = torch.topk(output, 5, dim=1)
                     for index in top[0]:
                         if index > 4:
-                            record_index = index
+                            record_index = index.unsqueeze(0)
                             break
                 else:
                     record_index = output.argmax(dim=1)
-                if record_index > 4:  # not PAD, PAD, BOS, EOS
+                # must be a number word and unique
+                if dataset.idx2word[records[record_index][0][2].item()].isdigit() and record_index not in record_indices[dim1]:
                     # size = (1) => size = (1, 1, hidden_size)
                     idx = record_index.view(-1, 1, 1).repeat(1, 1, planner.hidden_size)
                     content_plans[dim1][dim2] = planner.selected_content.gather(1, idx)
@@ -72,12 +74,14 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
     copy_indices = list()
     copy_values = list()
 
+    # get all entities and corresponding values from record indices
     for index in entry_indices:
         if index == vocab[PAD_WORD]:
             break
         all_ents.add(idx2word[records[index][0].item()])
         copy_values.append(idx2word[records[index][2].item()])
 
+    # add stuff like first name and last name to the set
     entset = set()
     for entity in all_ents:
         for piece in entity.split(" "):
