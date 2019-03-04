@@ -11,12 +11,12 @@ from random import random
 from torch.utils.data import DataLoader
 from ignite.engine import Engine, Events
 from ignite.handlers import ModelCheckpoint
-from ignite.metrics import Loss
 from util.planner import load_planner_data
-from util.constants import PAD_WORD
+from util.constants import BOS_WORD, EOS_WORD, PAD_WORD
 from os import path, makedirs
-from util.constants import device
+from util.constants import MAX_CONTENT_PLAN_LENGTH, device
 from util.helper_funcs import to_device
+from util.metrics import BleuScore
 
 
 class ContentPlanner(nn.Module):
@@ -177,6 +177,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
 
 def eval_planner(extractor, content_planner, test=False):
     content_planner = content_planner.to(device)
+    bleu_metric = BleuScore()
     if test:
         used_set = "Test"
         data = load_planner_data("test", extractor)
@@ -186,42 +187,41 @@ def eval_planner(extractor, content_planner, test=False):
         data = load_planner_data("valid", extractor)
         loader = DataLoader(data, batch_size=1)
 
-    def update(engine, batch):
+    def _evaluate():
         """
-        Update function for the Conent Selection & Planning Module.
-        Right now only online learning is supported
+        Logs BLEU score between generated content plans and gold content plans.
+        Logs average sizes of content plans.
         """
-
         content_planner.eval()
-        outputs = list()
-        labels = list()
+        gen_len = 0
+        gold_len = 0
+        size = 0
 
-        with torch.no_grad():
-            records, content_plan = to_device(batch)
-            hidden, cell = content_planner.init_hidden(records)
-            content_plan_iterator = iter(content_plan.t())
-            input_index = next(content_plan_iterator)
+        for batch in loader:
+            with torch.no_grad():
+                records, content_plan = to_device(batch)
+                hidden, cell = content_planner.init_hidden(records)
+                input_index = torch.tensor([data.vocab[BOS_WORD]], device=device)
 
-            for record_pointer in content_plan_iterator:
-                if record_pointer.cpu() == data.vocab[PAD_WORD]:
-                    break
-                output, hidden, cell = content_planner(input_index, hidden, cell)
-                outputs.append(output)
-                labels.append(record_pointer)
-                input_index = output.argmax(dim=1)
+                generated_plan = list()
+                gold_plan = content_plan[content_plan > data.vocab[PAD_WORD]][1:-1].tolist()
 
-        return torch.cat(outputs, dim=0), torch.cat(labels, dim=0)
+                while len(generated_plan) < MAX_CONTENT_PLAN_LENGTH:
+                    output, hidden, cell = content_planner(input_index, hidden, cell)
+                    input_index = output.argmax(dim=1)
+                    if input_index.cpu() == data.vocab[EOS_WORD]:
+                        break
+                    generated_plan.append(input_index.item())
 
-    evaluator = Engine(update)
-    loss = Loss(F.nll_loss)
-    loss.attach(evaluator, "loss")
+                bleu_metric(gold_plan, generated_plan)
+                gen_len += len(generated_plan)
+                gold_len += len(gold_plan)
+                size += 1
+        logging.info("{} Results - BLEU Score: {:.4f}".format(used_set, bleu_metric.calculate()))
+        logging.info("{} Results - avg gold content plan length: {}".format(used_set, gold_len / size))
+        logging.info("{} Results - avg generated content plan length: {}".format(used_set, gen_len / size))
 
-    @evaluator.on(Events.COMPLETED)
-    def log_loss(engine):
-        loss = engine.state.metrics["loss"]
-        logging.info("{} Results - Avg Loss: {:.4f}".format(used_set, loss))
-
-    evaluator.run(loader)
+    _evaluate()
 
 
 def get_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
