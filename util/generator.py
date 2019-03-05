@@ -233,7 +233,7 @@ class TextGeneratorWrapper():
         non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
         hidden, cell = self.generator.init_hidden(content_plan.gather(1, non_zero))
 
-        input_word = torch.tensor([vocab[BOS_WORD]])
+        input_word = torch.tensor([vocab[BOS_WORD]], device=device)
         text = []
 
         with torch.no_grad():
