@@ -125,7 +125,14 @@ class ExtractiveMetric(ABC):
         extracted = list()
         candrel = append_candidate_rels(entry, summary, prons, *self.entities)
         if len(candrel) != 0:
-            labels = self.get_labels(candrel)
+            # this is a critical section. sometimes when the extracted candrels are too many (e.g. the generated text
+            # is garbage and contains no punctuation) not enough space would be available and the program would crash
+            try:
+                labels = self.get_labels(candrel)
+                torch.cuda.empty_cache()
+            except RuntimeError:
+                torch.cuda.empty_cache()
+                return []
             extracted = self.get_record_tuples(entry, labels, candrel, resolve_record)
 
         return extracted
