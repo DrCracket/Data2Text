@@ -2,3 +2,5 @@
 /.venv
 # directory for cached data
 /.cache
+# directory for generations
+/generations
