@@ -9,7 +9,7 @@ from tabulate import tabulate
 from random import randrange
 from os import path, makedirs
 from nltk.tokenize.treebank import TreebankWordDetokenizer
-from .generator import load_generator_data, generate_text
+from .generator import load_generator_data, TextGeneratorWrapper
 from .metrics import CSMetric, RGMetric, COMetric, BleuScore
 
 
@@ -140,14 +140,15 @@ def genDescription(game, corpus_type, index, gen_summary, metrics):
     return description, filename
 
 
-def calculate_metrics(extractor, roto_index, gen_sum, gold_sum, corpus_type):
+def calculate_metrics(cs_metric, rg_metric, co_metric, bleu_metric,
+                      extractor, roto_index, gen_sum, gold_sum, corpus_type):
     """
     Calculate all extractive metrics plus BLEU score
     """
-    cs_metric = CSMetric(extractor, corpus_type)
-    rg_metric = RGMetric(extractor, corpus_type)
-    co_metric = COMetric(extractor, corpus_type)
-    bleu_metric = BleuScore()
+    cs_metric.clear()
+    rg_metric.clear()
+    co_metric.clear()
+    bleu_metric.clear()
 
     cs_metric(gen_sum, gold_sum, roto_index)
     rg_metric(gen_sum, roto_index)
@@ -163,11 +164,11 @@ def calculate_metrics(extractor, roto_index, gen_sum, gold_sum, corpus_type):
     return metrics
 
 
-def genMdFile(extractor, planner, generator, corpus_type, index=None,
+def genMdFile(extractor, planner, generator, corpus_type, value=None,
               folder="boxscore-data", dataset="rotowire"):
     """
     Reads the json database and saves a randomly selected entry as a
-    markdown file, if the index is not specified
+    markdown file, if the value is not specified
     """
     with tarfile.open(f"{folder}/{dataset}.tar.bz2", "r:bz2") as f:
         raw_data = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())
@@ -177,28 +178,34 @@ def genMdFile(extractor, planner, generator, corpus_type, index=None,
                                    folder,
                                    dataset)
 
-    if index is None:
-        index = randrange(0, len(gen_data))
+    t_generator = TextGeneratorWrapper(generator)
+    cs_metric = CSMetric(extractor, corpus_type)
+    rg_metric = RGMetric(extractor, corpus_type)
+    co_metric = COMetric(extractor, corpus_type)
+    bleu_metric = BleuScore()
 
-    entry = gen_data[index]
-    roto_index = gen_data.idx_list[index]
-    gen_summary_markup, gen_summary = generate_text(generator,
-                                                    gen_data.vocab,
-                                                    gen_data.idx2word,
-                                                    entry)
+    if value is None:
+        iterable = range(0, len(gen_data))
+    else:
+        iterable = [value]
 
-    metrics = calculate_metrics(extractor,
-                                roto_index,
-                                gen_summary,
-                                raw_data[roto_index]["summary"],
-                                corpus_type)
-
-    description, filename = genDescription(raw_data[roto_index],
-                                           corpus_type,
-                                           roto_index,
-                                           gen_summary_markup,
-                                           metrics)
-    if not path.exists("generations"):
-        makedirs("generations")
-    with open("generations/" + filename, "w") as file_:
-        file_.write(description)
+    for index in iterable:
+        entry = gen_data[index]
+        roto_index = gen_data.idx_list[index]
+        gen_summary_markup, gen_summary = \
+            t_generator.generate_text(gen_data.vocab, gen_data.idx2word,
+                                      entry)
+        metrics = calculate_metrics(cs_metric, rg_metric, co_metric,
+                                    bleu_metric, extractor, roto_index,
+                                    gen_summary,
+                                    raw_data[roto_index]["summary"],
+                                    corpus_type)
+        description, filename = genDescription(raw_data[roto_index],
+                                               corpus_type,
+                                               roto_index,
+                                               gen_summary_markup,
+                                               metrics)
+        if not path.exists("generations"):
+            makedirs("generations")
+        with open("generations/" + filename, "w") as file_:
+            file_.write(description)

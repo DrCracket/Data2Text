@@ -141,6 +141,14 @@ class ExtractiveMetric(ABC):
     def __call__(self):
         pass
 
+    @abstractmethod
+    def calculate(self):
+        pass
+
+    @abstractmethod
+    def clear(self):
+        pass
+
 
 class CSMetric(ExtractiveMetric):
     """
@@ -186,6 +194,14 @@ class CSMetric(ExtractiveMetric):
 
         return acc_prec, acc_rec
 
+    def clear(self):
+        """
+        Reset all accumulated values
+        """
+        self.recall = 0
+        self.precision = 0
+        self.size = 0
+
 
 class RGMetric(ExtractiveMetric):
     """
@@ -218,6 +234,14 @@ class RGMetric(ExtractiveMetric):
         acc_num = self.number / self.size if self.size != 0 else 0
 
         return acc_prec, acc_num
+
+    def clear(self):
+        """
+        Reset all accumulated values
+        """
+        self.number = 0
+        self.precision = 0
+        self.size = 0
 
 
 class COMetric(ExtractiveMetric):
@@ -261,6 +285,13 @@ class COMetric(ExtractiveMetric):
 
         return acc_dld
 
+    def clear(self):
+        """
+        Reset all accumulated values
+        """
+        self.dld = 0
+        self.size = 0
+
 
 class BleuScore():
 
@@ -277,3 +308,10 @@ class BleuScore():
 
     def calculate(self):
         return 100 * self.bleu / self.size if self.size != 0 else 0
+
+    def clear(self):
+        """
+        Reset all accumulated values
+        """
+        self.bleu = 0
+        self.size = 0

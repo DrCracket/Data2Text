@@ -214,31 +214,40 @@ def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data",
     return CopyDataset(summaries, p_copy, copy_indices, copy_values, content_plans, vocab, idx2word, idx_list)
 
 
-def generate_text(generator, vocab, idx2word, entry):
-    generator = generator.eval()
-    _, _, content_plan, _, copy_values = entry
+class TextGeneratorWrapper():
+    """
+    a wrapper around the pytorch text generator module to make it easy to
+    generate text
+    """
+    generator = None
 
-    content_plan, copy_values = content_plan.unsqueeze(0), copy_values.unsqueeze(0)
-    # remove all the zero padded values from the content plans
-    non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
-    non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
-    hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
+    def __init__(self, generator):
+        self.generator = generator.eval().to(device)
 
-    input_word = torch.tensor([vocab[BOS_WORD]])
-    text = []
+    def generate_text(self, vocab, idx2word, entry):
+        _, _, content_plan, _, copy_values = entry
 
-    with torch.no_grad():
-        while input_word.cpu() != vocab[EOS_WORD] and len(text) <= TEXT_MAX_LENGTH:
-            out_prob, copy_prob, p_copy, hidden, cell = generator(
-                input_word, hidden, cell)
-            if p_copy > 0.5:
-                input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
-            else:
-                input_word = out_prob.argmax(dim=1)
-            text.append((p_copy > 0.5, input_word.item()))
+        content_plan, copy_values = to_device([content_plan.unsqueeze(0), copy_values.unsqueeze(0)])
+        # remove all the zero padded values from the content plans
+        non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
+        non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
+        hidden, cell = self.generator.init_hidden(content_plan.gather(1, non_zero))
 
-    # copied values are marked with bold markdown syntax
-    markup = ["**" + idx2word[idx] + "**" if p_copy else idx2word[idx] for p_copy, idx in text[:-1]]
-    normal = [idx2word[idx] for _, idx in text[:-1]]
+        input_word = torch.tensor([vocab[BOS_WORD]])
+        text = []
 
-    return markup, normal
+        with torch.no_grad():
+            while input_word.cpu() != vocab[EOS_WORD] and len(text) <= TEXT_MAX_LENGTH:
+                out_prob, copy_prob, p_copy, hidden, cell = self.generator(
+                    input_word, hidden, cell)
+                if p_copy > 0.5:
+                    input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
+                else:
+                    input_word = out_prob.argmax(dim=1)
+                text.append((p_copy > 0.5, input_word.item()))
+
+        # copied values are marked with bold markdown syntax
+        markup = ["**" + idx2word[idx] + "**" if p_copy else idx2word[idx] for p_copy, idx in text[:-1]]
+        normal = [idx2word[idx] for _, idx in text[:-1]]
+
+        return markup, normal
