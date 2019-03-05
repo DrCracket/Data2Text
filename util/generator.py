@@ -15,7 +15,7 @@ from json import loads
 from .constants import number_words, suffixes, device, TEXT_MAX_LENGTH
 from .helper_funcs import annoying_number_word, extract_entities, extract_numbers, to_device
 from .planner import load_planner_data
-from .constants import PAD_WORD, BOS_WORD, EOS_WORD, MAX_CONTENT_PLAN_LENGTH
+from .constants import PAD_WORD, BOS_WORD, EOS_WORD, MAX_CONTENT_PLAN_LENGTH, MIN_CONTENT_PLAN_LENGTH
 from .data_structures import OrderedCounter, Vocab, CopyDataset
 
 
@@ -37,7 +37,9 @@ def make_content_plan(planner, dataset):
             hidden, cell = planner.init_hidden(records.unsqueeze(0))
             record_index = bos_tensor
             dim2 = 0
-            while not record_index == dataset.vocab[EOS_WORD]:
+            iteration = 0
+            # a content plan has to include at least MIN_CONTENT_PLAN_LENGTH records
+            while not record_index == dataset.vocab[EOS_WORD] or dim2 < MIN_CONTENT_PLAN_LENGTH:
                 output, hidden, cell = planner(record_index, hidden, cell)
                 # in 0.002% of all cases the content plan would be empty. To prevent that use the next likeliest
                 # record in the distribution that isn't a special record like BOS, EOS, PAD
@@ -55,11 +57,12 @@ def make_content_plan(planner, dataset):
                     idx = record_index.view(-1, 1, 1).repeat(1, 1, planner.hidden_size)
                     content_plans[dim1][dim2] = planner.selected_content.gather(1, idx)
                     record_indices[dim1][dim2] = record_index
-                    # stop when content_planner is to long
-                    if dim2 < MAX_CONTENT_PLAN_LENGTH - 1:
-                        dim2 += 1
-                    else:
-                        break
+                    dim2 += 1
+                # allow at most MAX_CONTENT_PLAN_LENGTH sentences
+                if iteration < MAX_CONTENT_PLAN_LENGTH - 1:
+                    iteration += 1
+                else:
+                    break
 
     return content_plans.cpu(), record_indices.cpu()
 

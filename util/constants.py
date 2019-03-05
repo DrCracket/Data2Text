@@ -36,6 +36,7 @@ MAX_RECORDS = 2 * NUM_PLAYERS * len(bs_keys) + 2 * len(ls_keys)
 # limit the content plan length to forcefully prevent content plans as long as
 # the record table
 MAX_CONTENT_PLAN_LENGTH = 75
+MIN_CONTENT_PLAN_LENGTH = 15
 
 TEXT_MAX_LENGTH = 1000
 
