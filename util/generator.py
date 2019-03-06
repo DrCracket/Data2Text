@@ -81,7 +81,7 @@ def make_train_content_plan(planner, dataset):
     planner.to(device)
 
     with torch.no_grad():
-        for dim1 in range(10):
+        for dim1 in range(len(dataset)):
             records, content_plan = to_device(dataset[dim1])
             planner.init_hidden(records.unsqueeze(0))
             content_plan_iterator = iter(content_plan)
