@@ -34,7 +34,11 @@ def extract_relations(extractor, dataset):
                 if label.sum() == 1:  # only use the predicitons when the analytical value is ambiguous
                     type_ = dataset.idx2type[label.argmax().item()]
                 else:
-                    type_ = dataset.idx2type[prediction.argmax().item()]
+                    if label.flatten()[prediction.argmax()] == 1:  # only use prediction if record exists
+                        type_ = dataset.idx2type[prediction.argmax().item()]
+                    else:
+                        type_ = dataset.idx2type[label.argmax().item()]
+
                 entity = []
                 number = []
                 for word, ent, num in zip(sent, entdist, numdist):
