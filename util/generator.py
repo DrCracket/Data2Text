@@ -23,7 +23,7 @@ def make_content_plan(planner, dataset):
     """
     Generate a content plan with a trained content planner for the generator.
     """
-    dim1, dim2, dim3 = dataset.sequence.size(0), dataset.sequence.size(1), planner.hidden_size
+    dim1, _, dim3 = dataset.sequence.size(0), dataset.sequence.size(1), planner.hidden_size
     # size = (#entries, records, hidden_size)
     content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dim3, device=device)
     record_indices = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dtype=torch.long, device=device)
@@ -63,6 +63,38 @@ def make_content_plan(planner, dataset):
                     iteration += 1
                 else:
                     break
+
+    return content_plans.cpu(), record_indices.cpu()
+
+
+def make_train_content_plan(planner, dataset):
+    """
+    Generate a content plan with a trained content planner for the generator.
+    Use the extractor to identify the records to copy.
+    Only used for training.
+    """
+    dim1, _, dim3 = dataset.sequence.size(0), dataset.sequence.size(1), planner.hidden_size
+    # size = (#entries, records, hidden_size)
+    content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dim3, device=device)
+    record_indices = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dtype=torch.long, device=device)
+    planner.eval()
+    planner.to(device)
+
+    with torch.no_grad():
+        for dim1 in range(10):
+            records, content_plan = to_device(dataset[dim1])
+            planner.init_hidden(records.unsqueeze(0))
+            content_plan_iterator = iter(content_plan)
+            next(content_plan_iterator)  # skip BOS word
+
+            for dim2, record_index in enumerate(content_plan_iterator):
+                if record_index == dataset.vocab[EOS_WORD]:
+                    break
+                # size = (1) => size = (1, 1, hidden_size)
+                idx = record_index.view(-1, 1, 1).repeat(1, 1, planner.hidden_size)
+                content_plans[dim1][dim2] = planner.selected_content.gather(1, idx)
+                record_indices[dim1][dim2] = record_index
+                dim2 += 1
 
     return content_plans.cpu(), record_indices.cpu()
 
@@ -132,7 +164,10 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
 
 def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-data", dataset="rotowire"):
     plan_dataset = load_planner_data(corpus_type, extractor, folder, dataset)
-    content_plans, record_indices = make_content_plan(planner, plan_dataset)
+    if corpus_type == "train":
+        content_plans, record_indices = make_train_content_plan(planner, plan_dataset)
+    else:
+        content_plans, record_indices = make_content_plan(planner, plan_dataset)
     summaries = list()
     all_p_copy = list()
     all_copy_indices = list()
@@ -146,8 +181,8 @@ def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-dat
         entry_indices = record_indices[idx]
         summary = raw_dataset[rel_idx]["summary"]
 
-        summary, p_copy, copy_indices, copy_values = get_copy_probs(summary, entry_indices,
-                                                                    records, plan_dataset.vocab, plan_dataset.idx2word)
+        summary, p_copy, copy_indices, copy_values = get_copy_probs(summary, entry_indices, records,
+                                                                    plan_dataset.vocab, plan_dataset.idx2word)
         summary.insert(0, BOS_WORD)
         summary.append(EOS_WORD)
         summaries.append(summary)
