@@ -69,6 +69,9 @@ def add_special_records(records, idx):
 
 
 def create_records(entry, vocab=None):
+    """
+    convert records from a dataset entry into the format used by the planner
+    """
     idx = 0
     records = DefaultListOrderedDict()
     records, idx = add_special_records(records, idx)
@@ -122,6 +125,10 @@ def create_records(entry, vocab=None):
 
 
 def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="rotowire"):
+    """
+    Takes the relations from the extractor and searches for matching record entries
+    in databes
+    """
     with tarfile.open(f"{folder}/{dataset}.tar.bz2", "r:bz2") as f:
         raw_dataset = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())
 
@@ -158,8 +165,24 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
             # NONE-types indicate no relation and shouldn't be used in the content plan,
             # unknown (UNK_WORD) values should be excluded as well
             if type_ != "NONE" and value != UNK_WORD:
-                matched_entity = max(((key, len(set(key.split()).intersection(entity.split()))) for key in entry_records.keys()),
-                                     key=lambda word: word[1])
+                sorted_matches = sorted([(key, len(set(key.split()).intersection(entity.split())))
+                                         for key in entry_records.keys()], key=lambda word: word[1], reverse=True)
+                for matched_entity in sorted_matches:
+                    # if the similarity is reasonable (if at least one word e.g. surname match)
+                    # compare value and type of all records with that entity
+                    if matched_entity[1] == 0:
+                        break
+                    matched_records = entry_records[matched_entity[0]]
+                    for idx, record in matched_records:
+                        # if type and values match a record exists and can be
+                        # used in the content plan for the planning module
+                        if type_ == record[1] and (value == record[2] or str(w2n.word_to_num(value)) == record[2]):
+                            content_plan.append(idx)
+                            break
+                    # if no matching record was found try the next one if possible
+                    else:
+                        continue
+                    break
                 # and if the similarity is reasonable (if at least one word e.g. surname match)
                 # compare value and type of all records with that entity
                 if matched_entity[1] >= 1:
