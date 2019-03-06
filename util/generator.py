@@ -89,6 +89,15 @@ def make_train_content_plan(planner, dataset):
 
             for dim2, record_index in enumerate(content_plan_iterator):
                 if record_index == dataset.vocab[EOS_WORD]:
+                    # ugly workaround when the content plan is empty (only happens in one case)
+                    # in this case add an unrelated record to avoid an empty content plan
+                    if dim2 == 0:
+                        index = torch.tensor([629], device=device)
+                        # size = (1) => size = (1, 1, hidden_size)
+                        idx = index.view(-1, 1, 1).repeat(1, 1, planner.hidden_size)
+                        content_plans[dim1][dim2] = planner.selected_content.gather(1, idx)
+                        record_indices[dim1][dim2] = index
+
                     break
                 # size = (1) => size = (1, 1, hidden_size)
                 idx = record_index.view(-1, 1, 1).repeat(1, 1, planner.hidden_size)
