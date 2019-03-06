@@ -126,7 +126,6 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
             else:
                 loss += F.nll_loss(out_prob, word)
             len_sequence += 1
-
             if use_teacher_forcing:
                 input_word = copy_values[:, copy_index].view(-1) if copy_tgt else word
             else:
@@ -209,13 +208,11 @@ def eval_generator(extractor, content_planner, generator, test=False):
                     else:
                         input_word = out_prob.argmax(dim=1)
                     text.append(input_word.item())
-
-            # convert indexes to readable summaries
+            # convert indices to readable summaries
             gold_sum = [data.idx2word[idx.item()] for idx in gold_text[0] if
                         idx not in (data.vocab[BOS_WORD], data.vocab[EOS_WORD],
                         data.vocab[PAD_WORD])]
             gen_sum = [data.idx2word[idx] for idx in text[1:-1]]
-
             # feed summaries into all metrics
             cs_metric(gen_sum, gold_sum, data.idx_list[idx])
             co_metric(gen_sum, gold_sum, data.idx_list[idx])
