@@ -94,7 +94,6 @@ def make_train_content_plan(planner, dataset):
                 idx = record_index.view(-1, 1, 1).repeat(1, 1, planner.hidden_size)
                 content_plans[dim1][dim2] = planner.selected_content.gather(1, idx)
                 record_indices[dim1][dim2] = record_index
-                dim2 += 1
 
     return content_plans.cpu(), record_indices.cpu()
 
