@@ -183,16 +183,6 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
                     else:
                         continue
                     break
-                # and if the similarity is reasonable (if at least one word e.g. surname match)
-                # compare value and type of all records with that entity
-                if matched_entity[1] >= 1:
-                    matched_records = entry_records[matched_entity[0]]
-                    for idx, record in matched_records:
-                        # if type and values match a record exists and can be
-                        # used in the content plan for the planning module
-                        if type_ == record[1] and (value == record[2] or str(w2n.word_to_num(value)) == record[2]):
-                            content_plan.append(idx)
-                            break
         content_plan.append(vocab[EOS_WORD])  # end sequence with EOS word
         # translate words to indices and create tensors
         for entity_records in entry_records.values():
