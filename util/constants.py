@@ -34,8 +34,8 @@ NUM_PLAYERS = 13
 MAX_RECORDS = 2 * NUM_PLAYERS * len(bs_keys) + 2 * len(ls_keys)
 
 # limit the content plan length to forcefully prevent content plans as long as
-# the record table the maximum content plan length in the training set is 92
-MAX_CONTENT_PLAN_LENGTH = 92
+# the record table the maximum content plan length in the training set is 106
+MAX_CONTENT_PLAN_LENGTH = 106
 MIN_CONTENT_PLAN_LENGTH = 20
 
 TEXT_MAX_LENGTH = 1000
