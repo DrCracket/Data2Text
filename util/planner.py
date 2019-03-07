@@ -129,9 +129,12 @@ def split_entities(entity_string):
     """
     split a string into its entities
     """
-    for ident in multi_word_cities + multi_word_teams:
-        if ident in entity_string:
-            return ident, entity_string.replace(ident, "").strip()
+    for city in multi_word_cities:
+        if city in entity_string:
+            return city, entity_string.replace(city, "").strip()
+    for team in multi_word_teams:
+        if team in entity_string:
+            return entity_string.replace(team, "").strip(), team
     return entity_string.split()
 
 
