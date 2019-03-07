@@ -11,7 +11,8 @@ from torch.nn.utils.rnn import pad_sequence
 from word2number import w2n
 from os import path, makedirs
 from json import loads
-from .constants import PAD_WORD, UNK_WORD, BOS_WORD, EOS_WORD, NUM_PLAYERS, bs_keys, ls_keys, device, HOME, AWAY, MAX_RECORDS
+from .constants import (PAD_WORD, UNK_WORD, BOS_WORD, EOS_WORD, NUM_PLAYERS, bs_keys,
+                        ls_keys, device, number_words, HOME, AWAY, MAX_RECORDS, multi_word_cities, multi_word_teams)
 from .data_structures import Vocab, DefaultListOrderedDict, SequenceDataset
 from .helper_funcs import get_player_idxs, to_device
 from .extractor import load_extractor_data
@@ -124,14 +125,86 @@ def create_records(entry, vocab=None):
     return records, vocab
 
 
+def split_entities(entity_string):
+    """
+    split a string into its entities
+    """
+    for ident in multi_word_cities + multi_word_teams:
+        if ident in entity_string:
+            return ident, entity_string.replace(ident, "").strip()
+    return entity_string.split()
+
+
+def match_records(entity, type_, value, matched_records, already_added):
+    """
+    Determine which record to use from an entity
+    """
+    indices = []
+    matched = False
+    for idx, record in matched_records:
+        # if type and values match a record exists and can be
+        # used in the content plan for the planning module
+        if type_ == record[1] and (value == record[2] or (value in number_words and str(w2n.word_to_num(value)) == record[2])):
+            matched = True
+            # name should be added only once
+            if record[0] not in already_added:
+                already_added.append(record[0])
+                # this is a little bit inefficient but it works
+                for name in split_entities(entity):
+                    _, name_pos, _ = match_records(entity, "PLAYER-FIRST_NAME", name, matched_records, already_added)
+                    indices.extend(name_pos)
+                    _, name_pos, _ = match_records(entity, "PLAYER-SECOND_NAME", name, matched_records, already_added)
+                    indices.extend(name_pos)
+                    _, name_pos, _ = match_records(entity, "TEAM-NAME", name, matched_records, already_added)
+                    indices.extend(name_pos)
+                    _, name_pos, _ = match_records(entity, "TEAM-CITY", name, matched_records, already_added)
+                    indices.extend(name_pos)
+            indices.append(idx)
+            break
+
+    return matched, indices, already_added
+
+
+def create_content_plan(pre_content_plan, entry_records, vocab):
+    """
+    Takes one particular extracted content plan and matches the records
+    according to its database entry
+    """
+    content_plan = [vocab[BOS_WORD]]  # begin sequence with BOS record
+    already_added = []
+    # for every extracted record in the ie content plan:
+    for extr_record in pre_content_plan:
+        # get the entity that has the highest string similarity (if the type of the extracted relation isn't NONE)
+        entity = extr_record[0]
+        value = extr_record[1]
+        type_ = extr_record[2]
+        # NONE-types indicate no relation and shouldn't be used in the content plan,
+        # unknown (UNK_WORD) values should be excluded as well
+        if type_ != "NONE" and value != UNK_WORD:
+            sorted_matches = sorted([(key, len(set(key.split()).intersection(entity.split())))
+                                     for key in entry_records.keys()], key=lambda word: word[1], reverse=True)
+            for matched_entity in sorted_matches:
+                # if the similarity is reasonable (if at least one word e.g. surname match)
+                # compare value and type of all records with that entity
+                if matched_entity[1] == 0:
+                    break
+                matched_records = entry_records[matched_entity[0]]
+                matched, indices, already_added = match_records(entity, type_, value, matched_records, already_added)
+                # if a matching entity was found, stop
+                if matched:
+                    content_plan.extend(indices)
+                    break
+    content_plan.append(vocab[EOS_WORD])  # end sequence with EOS word
+
+    return content_plan
+
+
 def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="rotowire"):
     """
-    Takes the relations from the extractor and searches for matching record entries
-    in databes
+    Create the planner dataset from extractor data
     """
     with tarfile.open(f"{folder}/{dataset}.tar.bz2", "r:bz2") as f:
         raw_dataset = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())
-
     extr_dataset = load_extractor_data(corpus_type, folder, dataset)
     pre_content_plans = extract_relations(extractor, extr_dataset)
     # add four to MAX_RECORDS for BOS, EOS and two initial PAD records
@@ -145,45 +218,14 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     else:  # if it doesn't exist create it
         _, _, vocab, _, _ = preproc_planner_data("train", extractor, folder, dataset)
 
-    # create the folder for the cached files if it does not exist
-    if not path.exists(".cache/planner"):
-        makedirs(".cache/planner")
-
     for dim1, (entry_idx, pre_content_plan) in enumerate(pre_content_plans):
         raw_entry = raw_dataset[entry_idx]  # load the entry that corresponds to a content plan
         if corpus_type == "train":  # only update vocab if processed corpus is train corpus
             entry_records, vocab = create_records(raw_entry, vocab)
         else:
             entry_records, _ = create_records(raw_entry)
-        content_plan = [vocab[BOS_WORD]]  # begin sequence with BOS record
-        # for every extracted record in the ie content plan:
-        for extr_record in pre_content_plan:
-            # get the entity that has the highest string similarity (if the type of the extracted relation isn't NONE)
-            entity = extr_record[0]
-            value = extr_record[1]
-            type_ = extr_record[2]
-            # NONE-types indicate no relation and shouldn't be used in the content plan,
-            # unknown (UNK_WORD) values should be excluded as well
-            if type_ != "NONE" and value != UNK_WORD:
-                sorted_matches = sorted([(key, len(set(key.split()).intersection(entity.split())))
-                                         for key in entry_records.keys()], key=lambda word: word[1], reverse=True)
-                for matched_entity in sorted_matches:
-                    # if the similarity is reasonable (if at least one word e.g. surname match)
-                    # compare value and type of all records with that entity
-                    if matched_entity[1] == 0:
-                        break
-                    matched_records = entry_records[matched_entity[0]]
-                    for idx, record in matched_records:
-                        # if type and values match a record exists and can be
-                        # used in the content plan for the planning module
-                        if type_ == record[1] and (value == record[2] or str(w2n.word_to_num(value)) == record[2]):
-                            content_plan.append(idx)
-                            break
-                    # if no matching record was found try the next one if possible
-                    else:
-                        continue
-                    break
-        content_plan.append(vocab[EOS_WORD])  # end sequence with EOS word
+        content_plan = create_content_plan(pre_content_plan, entry_records, vocab)
+
         # translate words to indices and create tensors
         for entity_records in entry_records.values():
             for dim2, record in entity_records:
@@ -194,7 +236,10 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     # pad lists of tensors to tensor of equal length
     records = pad_sequence(records, batch_first=True)
     content_plans = pad_sequence(content_plans, batch_first=True)
+
     # wite stuff to disk
+    if not path.exists(".cache/planner"):
+        makedirs(".cache/planner")
     torch.save(records, f".cache/planner/{corpus_type}_records.pt")
     torch.save(content_plans, f".cache/planner/{corpus_type}_content_plans.pt")
     pickle.dump(vocab, open(".cache/planner/vocab.pt", "wb"))

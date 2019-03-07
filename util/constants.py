@@ -7,10 +7,10 @@ import torch
 HOME = "HOME"
 AWAY = "AWAY"
 
-PAD_WORD = '<pad>'
-UNK_WORD = '<unk>'
-BOS_WORD = '<s>'
-EOS_WORD = '</s>'
+PAD_WORD = "<pad>"
+UNK_WORD = "<unk>"
+BOS_WORD = "<s>"
+EOS_WORD = "</s>"
 
 prons = ["he", "He", "him", "Him", "his", "His", "they",
          "They", "them", "Them", "their", "Their"]  # leave out "it"
@@ -29,6 +29,8 @@ ls_keys = ["TEAM-PTS_QTR1", "TEAM-PTS_QTR2", "TEAM-PTS_QTR3", "TEAM-PTS_QTR4",
            "TEAM-PTS", "TEAM-FG_PCT", "TEAM-FG3_PCT", "TEAM-FT_PCT", "TEAM-REB",
            "TEAM-AST", "TEAM-TOV", "TEAM-WINS", "TEAM-LOSSES", "TEAM-CITY", "TEAM-NAME"]
 suffixes = ["II", "III", "Jr.", "Jr"]
+multi_word_cities = ["Golden State", "Los Angeles", "New Orleans", "Oklahoma City", "San Antonio", "New York"]
+multi_word_teams = ["Trail Blazers"]
 
 NUM_PLAYERS = 13
 MAX_RECORDS = 2 * NUM_PLAYERS * len(bs_keys) + 2 * len(ls_keys)
