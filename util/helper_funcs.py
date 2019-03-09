@@ -1,12 +1,12 @@
 ###############################################################################
 # Helper Functions used for data preprocessing                                #
-# They are based on code of the functions from Wiseman et al.                 #
+# They are based on the code from Wiseman et al.                              #
 # https://github.com/harvardnlp/data2text/blob/master/data_utils.py           #
 ###############################################################################
 
 from word2number import w2n
 from nltk import sent_tokenize
-from .constants import singular_prons, plural_prons, number_words, prons, device, NUM_PLAYERS
+from .constants import singular_prons, plural_prons, number_words, prons, device, suffixes, NUM_PLAYERS
 from .data_structures import DefaultListOrderedDict
 
 
@@ -39,7 +39,7 @@ def get_ents(dat):
             pieces = k.split()
             if len(pieces) > 1:
                 for piece in pieces:
-                    if len(piece) > 1 and piece not in ["II", "III", "Jr.", "Jr"]:
+                    if len(piece) > 1 and piece not in suffixes:
                         entset.add(piece)
 
     all_ents = players | teams | cities
