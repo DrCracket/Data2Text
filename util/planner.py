@@ -11,8 +11,8 @@ from torch.nn.utils.rnn import pad_sequence
 from word2number import w2n
 from os import path, makedirs
 from json import loads
-from .constants import (PAD_WORD, UNK_WORD, BOS_WORD, EOS_WORD, NUM_PLAYERS, bs_keys,
-                        ls_keys, device, number_words, HOME, AWAY, MAX_RECORDS, multi_word_cities, multi_word_teams)
+from .constants import (PAD_WORD, UNK_WORD, BOS_WORD, EOS_WORD, NUM_PLAYERS, bs_keys, multi_word_cities, suffixes,
+                        multi_word_teams, ls_keys, device, number_words, HOME, AWAY, MAX_RECORDS)
 from .data_structures import Vocab, DefaultListOrderedDict, SequenceDataset
 from .helper_funcs import get_player_idxs, to_device
 from .extractor import load_extractor_data
@@ -98,8 +98,6 @@ def create_records(entry, vocab=None):
         record = list()
         team = entry["home_line"]["TEAM-NAME"]
         city = entry["home_line"]["TEAM-CITY"]
-        if city == "Los Angeles":
-            city = city + " LA"
         record.append(team)
         record.append(key)
         record.append(entry["home_line"][key])
@@ -112,8 +110,6 @@ def create_records(entry, vocab=None):
         record = list()
         team = entry["vis_line"]["TEAM-NAME"]
         city = entry["vis_line"]["TEAM-CITY"]
-        if city == "Los Angeles":
-            city = city + " LA"
         record.append(team)
         record.append(key)
         record.append(entry["vis_line"][key])
@@ -129,13 +125,18 @@ def split_entities(entity_string):
     """
     split a string into its entities
     """
+    entity_string = entity_string.replace(UNK_WORD, "").replace("LA", "Los Angeles")
     for city in multi_word_cities:
+        if city == entity_string:
+            return [city]
         if city in entity_string:
-            return city, entity_string.replace(city, "").strip()
+            return [city] + entity_string.replace(city, "").split()
     for team in multi_word_teams:
+        if team == entity_string:
+            return [city]
         if team in entity_string:
-            return entity_string.replace(team, "").strip(), team
-    return entity_string.split()
+            return entity_string.replace(team, "").split() + [team]
+    return [piece for piece in entity_string.split() if len(piece) > 1 and piece not in suffixes]
 
 
 def match_records(entity, type_, value, matched_records, already_added):
@@ -152,7 +153,6 @@ def match_records(entity, type_, value, matched_records, already_added):
             # name should be added only once
             if record[0] not in already_added:
                 already_added.append(record[0])
-                # this is a little bit inefficient but it works
                 for name in split_entities(entity):
                     _, name_pos, _ = match_records(entity, "PLAYER-FIRST_NAME", name, matched_records, already_added)
                     indices.extend(name_pos)
@@ -166,6 +166,24 @@ def match_records(entity, type_, value, matched_records, already_added):
             break
 
     return matched, indices, already_added
+
+
+def resolve_entity(entity, total_entities):
+    """
+    assign an extracted entity from the text to its corresponding dataset
+    entity
+    """
+    entity = entity.replace(UNK_WORD, "").replace("LA", "Los Angeles")
+    sorted_by_relevance = sorted([(key, len(set(key.split()).intersection(entity.split())))
+                                 for key in total_entities], key=lambda word: word[1], reverse=True)
+    matches = list()
+    previous = -1
+    for ent, score in sorted_by_relevance:
+        if score == 0 or score < previous:
+            break
+        matches.append(ent)
+        previous = score
+    return matches
 
 
 def create_content_plan(pre_content_plan, entry_records, vocab):
@@ -184,14 +202,9 @@ def create_content_plan(pre_content_plan, entry_records, vocab):
         # NONE-types indicate no relation and shouldn't be used in the content plan,
         # unknown (UNK_WORD) values should be excluded as well
         if type_ != "NONE" and value != UNK_WORD:
-            sorted_matches = sorted([(key, len(set(key.split()).intersection(entity.split())))
-                                     for key in entry_records.keys()], key=lambda word: word[1], reverse=True)
-            for matched_entity in sorted_matches:
-                # if the similarity is reasonable (if at least one word e.g. surname match)
-                # compare value and type of all records with that entity
-                if matched_entity[1] == 0:
-                    break
-                matched_records = entry_records[matched_entity[0]]
+            matched_entities = resolve_entity(entity, entry_records.keys())
+            for matched_entity in matched_entities:
+                matched_records = entry_records[matched_entity]
                 matched, indices, already_added = match_records(entity, type_, value, matched_records, already_added)
                 # if a matching entity was found, stop
                 if matched:
@@ -263,7 +276,7 @@ def load_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="r
 
     except FileNotFoundError:
         logging.warning(f"Failed to locate cached content planner {corpus_type} corpus!")
-        logging.info(f"Genrating a new corpus...")
+        logging.info(f"Generating a new corpus...")
         records, content_plans, vocab, idx_list = preproc_planner_data(corpus_type, extractor, folder, dataset)
 
     idx2word = dict(((v, k) for k, v in vocab.items()))
