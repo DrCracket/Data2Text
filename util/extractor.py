@@ -27,9 +27,9 @@ def preproc_extractor_data(corpus_type, folder, dataset_name, train_stats=None):
     for entry in extracted_rel_tups["train"]:
         for tup in entry:
             word_counter.update(tup[0])
-        for k in list(word_counter.keys()):
-            if word_counter[k] < 2:
-                del word_counter[k]  # will replace w/ unk
+    for k in list(word_counter.keys()):
+        if word_counter[k] < 2:
+            del word_counter[k]  # will replace w/ unk
     vocab = Vocab(word_counter.keys())
     labeldict = Vocab()
     # only use the labels that occur in the training dataset
@@ -124,7 +124,7 @@ def load_extractor_data(corpus_type, folder="boxscore-data", dataset="rotowire")
 
     except FileNotFoundError:
         logging.warning(f"Failed to locate cached extractor {corpus_type} corpus!")
-        logging.info(f"Genrating a new corpus...")
+        logging.info(f"Generating a new corpus...")
         type_data, idx2word, idx2type, stats, len_entries, idx_list = preproc_extractor_data(
             corpus_type, folder, dataset)
         sents, entdists, numdists, labels = type_data
