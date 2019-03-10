@@ -158,9 +158,9 @@ def match_records(entity, type_, value, matched_records, already_added):
                     indices.extend(name_pos)
                     _, name_pos, _ = match_records(entity, "PLAYER-SECOND_NAME", name, matched_records, already_added)
                     indices.extend(name_pos)
-                    _, name_pos, _ = match_records(entity, "TEAM-NAME", name, matched_records, already_added)
-                    indices.extend(name_pos)
                     _, name_pos, _ = match_records(entity, "TEAM-CITY", name, matched_records, already_added)
+                    indices.extend(name_pos)
+                    _, name_pos, _ = match_records(entity, "TEAM-NAME", name, matched_records, already_added)
                     indices.extend(name_pos)
             indices.append(idx)
             break

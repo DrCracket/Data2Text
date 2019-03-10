@@ -12,10 +12,10 @@ from nltk import sent_tokenize
 from word2number import w2n
 from os import path, makedirs
 from json import loads
-from .constants import number_words, suffixes, device, TEXT_MAX_LENGTH
+from .constants import (number_words, device, TEXT_MAX_LENGTH, BOS_WORD, EOS_WORD, multi_word_cities,
+                        multi_word_teams, MAX_CONTENT_PLAN_LENGTH, MIN_CONTENT_PLAN_LENGTH)
 from .helper_funcs import annoying_number_word, extract_entities, extract_numbers, to_device
 from .planner import load_planner_data
-from .constants import PAD_WORD, BOS_WORD, EOS_WORD, MAX_CONTENT_PLAN_LENGTH, MIN_CONTENT_PLAN_LENGTH
 from .data_structures import OrderedCounter, Vocab, CopyDataset
 
 
@@ -51,8 +51,8 @@ def make_content_plan(planner, dataset):
                             break
                 else:
                     record_index = output.argmax(dim=1)
-                # must be a number word and unique
-                if dataset.idx2word[records[record_index][0][2].item()].isdigit() and record_index not in record_indices[dim1]:
+                # must be unique
+                if record_index not in record_indices[dim1]:
                     # size = (1) => size = (1, 1, hidden_size)
                     idx = record_index.view(-1, 1, 1).repeat(1, 1, planner.hidden_size)
                     content_plans[dim1][dim2] = planner.selected_content.gather(1, idx)
@@ -97,7 +97,6 @@ def make_train_content_plan(planner, dataset):
                         idx = index.view(-1, 1, 1).repeat(1, 1, planner.hidden_size)
                         content_plans[dim1][dim2] = planner.selected_content.gather(1, idx)
                         record_indices[dim1][dim2] = index
-
                     break
                 # size = (1) => size = (1, 1, hidden_size)
                 idx = record_index.view(-1, 1, 1).repeat(1, 1, planner.hidden_size)
@@ -107,9 +106,34 @@ def make_train_content_plan(planner, dataset):
     return content_plans.cpu(), record_indices.cpu()
 
 
+def extract_things_ordered(tokes, all_ents, records, entry_indices, idx2word):
+    """
+    Bring extracted things and ents in the order they appear in the text.
+    Also extract the entity part of the tuples where the value refers to an entity.
+    """
+    ents = extract_entities(tokes, all_ents, list())
+    nums = extract_numbers(tokes)
+    ents.extend(nums)
+    for thing in ents:
+        assert (thing[1] - thing[0]) == 1, "only things with length of 1 allowed"
+    sorted_things = [thing[0:3] for thing in sorted(ents, key=lambda x: x[0]) if len(thing) == 3 or not thing[3]]
+    non_num_entities = list()
+
+    for thing in sorted_things:
+        if type(thing[2]) == str:
+            for i, index in enumerate(entry_indices):
+                value = idx2word[records[index][2].item()]
+                entity = idx2word[records[index][0].item()]
+                if thing[2] == value:
+                    non_num_entities.append(entity)
+
+    return sorted_things, non_num_entities
+
+
 def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
     """
     Extract the probabilities of which words are copied from the dataset
+    for one summary
     """
     all_ents = set()
     all_sents = list()
@@ -119,50 +143,67 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
 
     # get all entities and corresponding values from record indices
     for index in entry_indices:
-        if index == vocab[PAD_WORD]:
-            break
-        all_ents.add(idx2word[records[index][0].item()])
-        copy_values.append(idx2word[records[index][2].item()])
+        type_ = idx2word[records[index][1].item()]
+        value = idx2word[records[index][2].item()]
+        if type_ in ["PLAYER-FIRST_NAME", "PLAYER-SECOND_NAME", "TEAM-NAME", "TEAM-CITY"]:
+            all_ents.add(value)
+        copy_values.append(value)
 
-    # add stuff like first name and last name to the set
-    entset = set()
-    for entity in all_ents:
-        for piece in entity.split(" "):
-            if len(piece) > 1 and piece not in suffixes:
-                entset.add(piece)
-    all_ents = all_ents | entset
-
-    for sent in sent_tokenize(" ".join(summary)):
+    for sent in sent_tokenize(" ".join(summary).replace("LA", "Los Angeles")):
         tokes = list()
         split_sent = sent.split(" ")
-        for i, word in enumerate(split_sent):
+        i = 0
+        while i < len(split_sent):
             # replace every number word with the corresponding digits
-            if word in number_words and not annoying_number_word(split_sent, i):
+            if split_sent[i] in number_words and not annoying_number_word(split_sent, i):
                 j = 1
                 while i + j < len(split_sent) and split_sent in number_words and not annoying_number_word(split_sent,
                                                                                                           i + j):
                     j += 1
                 tokes.append(str(w2n.word_to_num(" ".join(split_sent[i:i + j]))))
                 i += j
+            # reassemble multi-word cities/teams
+            elif " ".join(split_sent[i:i + 2]) in multi_word_cities + multi_word_teams:
+                tokes.append(" ".join(split_sent[i:i + 2]))
+                i += 2
+            # substitute 1 word identifiers for multi-word cities/teams
+            elif any(split_sent[i] in ident.split() for ident in multi_word_cities + multi_word_teams):
+                tokes.append(next(ident for ident in multi_word_cities + multi_word_teams
+                                  if split_sent[i] in ident.split()))
+                i += 1
             else:
-                tokes.append(word)
+                tokes.append(split_sent[i])
+                i += 1
         p_copy = [0] * len(tokes)
-        ents = extract_entities(tokes, all_ents, list())
-        nums = extract_numbers(tokes)
-        for ent in ents:
-            for num in nums:
+        ents_and_nums, non_num_entities = extract_things_ordered(tokes, all_ents, records, entry_indices, idx2word)
+        already_added_ents = set()
+        for thing in ents_and_nums:
+            if type(thing[2]) == int:
+                # find the num in entites whose identifiers where already copied
                 for i, index in enumerate(entry_indices):
-                    if index == vocab[PAD_WORD]:
-                        break
                     entity = idx2word[records[index][0].item()]
-                    identifiers = {entity}
                     value = idx2word[records[index][2].item()]
-                    for piece in entity.split():
-                        if len(piece) > 1 and piece not in suffixes:
-                            identifiers.add(piece)
-                    if ent[2] in identifiers and str(num[2]) == value:
-                        p_copy[num[0]:num[1]] = [1]
+                    if entity in already_added_ents and str(thing[2]) == value:
+                        p_copy[thing[0]:thing[1]] = [1]
                         copy_indices.append(i)
+                        break
+                # if they can't be found search in all entities that appear in the sentence
+                else:
+                    for i, index in enumerate(entry_indices):
+                        entity = idx2word[records[index][0].item()]
+                        value = idx2word[records[index][2].item()]
+                        if entity in non_num_entities and str(thing[2]) == value:
+                            p_copy[thing[0]:thing[1]] = [1]
+                            copy_indices.append(i)
+                            break
+            else:
+                for i, index in enumerate(entry_indices):
+                    value = idx2word[records[index][2].item()]
+                    entity = idx2word[records[index][0].item()]
+                    if thing[2] == value:
+                        p_copy[thing[0]:thing[1]] = [1]
+                        copy_indices.append(i)
+                        already_added_ents.add(entity)
                         break
         all_sents.extend(tokes)
         all_p_copy.extend(p_copy)
@@ -189,7 +230,7 @@ def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-dat
         entry_indices = record_indices[idx]
         summary = raw_dataset[rel_idx]["summary"]
 
-        summary, p_copy, copy_indices, copy_values = get_copy_probs(summary, entry_indices, records,
+        summary, p_copy, copy_indices, copy_values = get_copy_probs(summary, entry_indices[entry_indices > 0], records,
                                                                     plan_dataset.vocab, plan_dataset.idx2word)
         summary.insert(0, BOS_WORD)
         summary.append(EOS_WORD)
@@ -249,7 +290,7 @@ def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data",
 
     except FileNotFoundError:
         logging.warning(f"Failed to locate cached generator {corpus_type} corpus!")
-        logging.info(f"Genrating a new corpus...")
+        logging.info(f"Generating a new corpus...")
         summaries, p_copy, copy_indices, copy_values, content_plans, vocab, idx_list = preproc_generator_data(
             corpus_type, extractor, planner, folder, dataset)
 
