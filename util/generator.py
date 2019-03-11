@@ -25,7 +25,7 @@ def make_content_plan(planner, dataset):
     """
     dim1 = dataset.sequence.size(0)
     # size = (#entries, records, hidden_size)
-    content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, 4, device=device)
+    content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, 4, dtype=torch.long, device=device)
     record_indices = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dtype=torch.long, device=device)
     bos_tensor = torch.tensor([dataset.vocab[BOS_WORD]], device=device)
     planner.eval()
@@ -73,7 +73,7 @@ def make_train_content_plan(planner, dataset):
     """
     dim1 = dataset.sequence.size(0)
     # size = (#entries, records, hidden_size)
-    content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, 4, device=device)
+    content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, 4, dtype=torch.long, device=device)
     record_indices = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dtype=torch.long, device=device)
     planner.eval()
     planner.to(device)
