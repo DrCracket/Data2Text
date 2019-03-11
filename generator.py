@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import logging
+import copy
 from torch import optim
 from random import random
 from torch.utils.data import DataLoader
@@ -20,10 +21,11 @@ from util.metrics import CSMetric, RGMetric, COMetric, BleuScore
 
 
 class TextGenerator(nn.Module):
-    def __init__(self, word_input_size, word_hidden_size=600, record_hidden_size=600, hidden_size=600):
+    def __init__(self, record_encoder, word_input_size, word_hidden_size=600, record_hidden_size=600, hidden_size=600):
         super().__init__()
         self.encoded = None
 
+        self.record_encoder = record_encoder
         self.embedding = nn.Embedding(word_input_size, word_hidden_size)
         self.encoder_rnn = nn.LSTM(record_hidden_size, hidden_size, batch_first=True, bidirectional=True)
         self.decoder_rnn = nn.LSTM(word_hidden_size, hidden_size, batch_first=True, bidirectional=True)
@@ -62,19 +64,14 @@ class TextGenerator(nn.Module):
         new_hidden = new_hidden.squeeze(1).view(new_hidden.size(0), 2, -1).transpose(1, 0)
         return out_prob, log_attention, p_copy, new_hidden, cell,
 
-    def encode_recods(self, records):
-        """
-        Use an RNN to encode the record representations from the planning stage.
-        """
-        # encoded.shape = (batch_size, seq_len, 2 * hidden_size)
-        encoded, (hidden, cell) = self.encoder_rnn(records)
-        return encoded, hidden, cell
-
     def init_hidden(self, records):
         """
         Compute the initial hidden state and cell state of the Content Planning LSTM.
+        Use an RNN to encode the record representations from the planning stage record encoder.
         """
-        self.encoded, hidden, cell = self.encode_recods(records)
+        encoded_records = self.record_encoder(records)
+        # encoded.shape = (batch_size, seq_len, 2 * hidden_size)
+        self.encoded, (hidden, cell) = self.encoder_rnn(encoded_records)
         return hidden, cell
 
 
@@ -88,7 +85,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
     data = load_generator_data("train", extractor, content_planner)
     loader = DataLoader(data, shuffle=True, pin_memory=torch.cuda.is_available())  # online learning
 
-    generator = TextGenerator(len(data.idx2word)).to(device)
+    generator = TextGenerator(copy.deepcopy(content_planner.record_encoder), len(data.idx2word)).to(device)
     optimizer = optim.Adagrad(generator.parameters(), lr=learning_rate, initial_accumulator_value=acc_val_init)
 
     logging.info("Training a new Text Generator...")
@@ -102,12 +99,8 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
         optimizer.zero_grad()
         use_teacher_forcing = True if random() < teacher_forcing_ratio else False
         text, copy_tgts, content_plan, copy_indices, copy_values = to_device(batch)
-
         # remove all the zero padded values from the content plans
-        non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
-        non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
-        hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
-
+        hidden, cell = generator.init_hidden(content_plan[:, :(content_plan > 0).max(dim=2)[0].sum(dim=1)])
         text_iter, copy_index_iter = zip(text.t(), copy_tgts.t()), iter(copy_indices.t())
         input_word, _ = next(text_iter)
 
@@ -190,12 +183,8 @@ def eval_generator(extractor, content_planner, generator, test=False):
         bleu_metric = BleuScore()
         for idx, batch in enumerate(loader):
             gold_text, _, content_plan, _, copy_values = to_device(batch)
-
             # remove all the zero padded values from the content plans
-            non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
-            non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
-            hidden, cell = generator.init_hidden(content_plan.gather(1, non_zero))
-
+            hidden, cell = generator.init_hidden(content_plan[:, :(content_plan > 0).max(dim=2)[0].sum(dim=1)])
             input_word = torch.tensor([data.vocab[BOS_WORD]]).to(device, non_blocking=True)
             text = [input_word.item()]
 
@@ -232,7 +221,7 @@ def get_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
     logging.info("Trying to load cached text generator model...")
     if path.exists("models/text_generator.pt"):
         data = load_generator_data("train", extractor, content_planner)
-        generator = TextGenerator(len(data.idx2word))
+        generator = TextGenerator(copy.deepcopy(content_planner.record_encoder), len(data.idx2word))
         generator.load_state_dict(torch.load("models/text_generator.pt", map_location="cpu"))
         logging.info("Success!")
     else:

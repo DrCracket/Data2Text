@@ -23,9 +23,9 @@ def make_content_plan(planner, dataset):
     """
     Generate a content plan with a trained content planner for the generator.
     """
-    dim1, _, dim3 = dataset.sequence.size(0), dataset.sequence.size(1), planner.hidden_size
+    dim1 = dataset.sequence.size(0)
     # size = (#entries, records, hidden_size)
-    content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dim3, device=device)
+    content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, 4, device=device)
     record_indices = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dtype=torch.long, device=device)
     bos_tensor = torch.tensor([dataset.vocab[BOS_WORD]], device=device)
     planner.eval()
@@ -51,11 +51,9 @@ def make_content_plan(planner, dataset):
                             break
                 else:
                     record_index = output.argmax(dim=1)
-                # must be unique
-                if record_index not in record_indices[dim1]:
-                    # size = (1) => size = (1, 1, hidden_size)
-                    idx = record_index.view(-1, 1, 1).repeat(1, 1, planner.hidden_size)
-                    content_plans[dim1][dim2] = planner.selected_content.gather(1, idx)
+                # must be unique and shouldn't be unavailable
+                if dataset.idx2word[records[record_index][0][2].item()] != "N/A" and record_index not in record_indices[dim1]:
+                    content_plans[dim1][dim2] = records[record_index]
                     record_indices[dim1][dim2] = record_index
                     dim2 += 1
                 # allow at most MAX_CONTENT_PLAN_LENGTH sentences
@@ -73,9 +71,9 @@ def make_train_content_plan(planner, dataset):
     Use the extractor to identify the records to copy.
     Only used for training.
     """
-    dim1, _, dim3 = dataset.sequence.size(0), dataset.sequence.size(1), planner.hidden_size
+    dim1 = dataset.sequence.size(0)
     # size = (#entries, records, hidden_size)
-    content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dim3, device=device)
+    content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, 4, device=device)
     record_indices = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dtype=torch.long, device=device)
     planner.eval()
     planner.to(device)
@@ -93,14 +91,10 @@ def make_train_content_plan(planner, dataset):
                     # in this case add an unrelated record to avoid an empty content plan
                     if dim2 == 0:
                         index = torch.tensor([629], device=device)
-                        # size = (1) => size = (1, 1, hidden_size)
-                        idx = index.view(-1, 1, 1).repeat(1, 1, planner.hidden_size)
-                        content_plans[dim1][dim2] = planner.selected_content.gather(1, idx)
+                        content_plans[dim1][dim2] = records[index]
                         record_indices[dim1][dim2] = index
                     break
-                # size = (1) => size = (1, 1, hidden_size)
-                idx = record_index.view(-1, 1, 1).repeat(1, 1, planner.hidden_size)
-                content_plans[dim1][dim2] = planner.selected_content.gather(1, idx)
+                content_plans[dim1][dim2] = records[record_index]
                 record_indices[dim1][dim2] = record_index
 
     return content_plans.cpu(), record_indices.cpu()

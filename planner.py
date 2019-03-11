@@ -19,45 +19,20 @@ from util.helper_funcs import to_device
 from util.metrics import BleuScore
 
 
-class ContentPlanner(nn.Module):
+class RecordEncoder(nn.Module):
     def __init__(self, input_size, hidden_size=600):
-        super(ContentPlanner, self).__init__()
-        self.hidden_size = hidden_size
-        self.selected_content = None
+        super(RecordEncoder, self).__init__()
 
         self.embedding = nn.Embedding(input_size, hidden_size)
         self.relu_mlp = nn.Sequential(
             nn.Linear(4 * hidden_size, hidden_size),
             nn.LeakyReLU())
-
         self.linear = nn.Linear(hidden_size, hidden_size)
         self.sigmoid_mlp = nn.Sequential(
             nn.Linear(2 * hidden_size, hidden_size),
             nn.Sigmoid())
 
-        self.rnn = nn.LSTM(hidden_size, hidden_size, batch_first=True)
-        self.linear2 = nn.Linear(hidden_size, hidden_size)
-
-    def forward(self, index, hidden, cell):
-        """
-        Content Planning. Uses attention to create pointers to the input records.
-        """
-        # size = (batch_size) => size = (batch_size, 1, hidden_size)
-        index = index.view(-1, 1, 1).repeat(1, 1, self.hidden_size)
-        input_ = self.selected_content.gather(1, index)
-
-        # size = (batch_size, 1, hidden_size)
-        output, (hidden, cell) = self.rnn(input_, (hidden, cell))
-        # size = (batch_size, hidden_size, records)
-        content_tp = self.linear2(self.selected_content).transpose(1, 2)
-        # size = (batch_size, 1, records)
-        logits = torch.bmm(output, content_tp)
-        # size = (batch_size, records)
-        attention = F.log_softmax(logits, dim=2).squeeze(1)
-
-        return attention, hidden, cell
-
-    def select_content(self, records):
+    def forward(self, records):
         """
         Content selection gate. Determines importance vis-a-vis other records.
         """
@@ -83,11 +58,40 @@ class ContentPlanner(nn.Module):
 
         return output
 
+
+class ContentPlanner(nn.Module):
+    def __init__(self, input_size, hidden_size=600):
+        super(ContentPlanner, self).__init__()
+        self.selected_content = None
+
+        self.record_encoder = RecordEncoder(input_size, hidden_size)
+        self.rnn = nn.LSTM(hidden_size, hidden_size, batch_first=True)
+        self.linear = nn.Linear(hidden_size, hidden_size)
+
+    def forward(self, index, hidden, cell):
+        """
+        Content Planning. Uses attention to create pointers to the input records.
+        """
+        # size = (batch_size) => size = (batch_size, 1, hidden_size)
+        index = index.view(-1, 1, 1).repeat(1, 1, self.hidden_size)
+        input_ = self.selected_content.gather(1, index)
+
+        # size = (batch_size, 1, hidden_size)
+        output, (hidden, cell) = self.rnn(input_, (hidden, cell))
+        # size = (batch_size, hidden_size, records)
+        content_tp = self.linear(self.selected_content).transpose(1, 2)
+        # size = (batch_size, 1, records)
+        logits = torch.bmm(output, content_tp)
+        # size = (batch_size, records)
+        attention = F.log_softmax(logits, dim=2).squeeze(1)
+
+        return attention, hidden, cell
+
     def init_hidden(self, records):
         """
         Compute the initial hidden state and cell state of the Content Planning LSTM.
         """
-        self.selected_content = self.select_content(records)
+        self.selected_content = self.record_encoder(records)
         # transpose first and second dim, because LSTM expects seq_len first
         hidden = torch.mean(self.selected_content, dim=1, keepdim=True).transpose(0, 1)
         cell = torch.zeros_like(hidden)
@@ -114,7 +118,6 @@ def train_planner(extractor, epochs=25, learning_rate=0.01, acc_val_init=0.1,
         Update function for the Conent Selection & Planning Module.
         Right now only online learning is supported
         """
-
         content_planner.train()
         optimizer.zero_grad()
         use_teacher_forcing = True if random() < teacher_forcing_ratio else False
