@@ -222,7 +222,7 @@ def preproc_text(text):
     """
     Replace abbrevations with their full identifier
     """
-    for key, value in abbr2ent:
+    for key, value in abbr2ent.items():
         text = text.replace(key, value)
     return text
 
