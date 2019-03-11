@@ -218,14 +218,37 @@ def get_rels(entry, ents, nums, players, teams, cities):
     return rels
 
 
+def split_sent(sent):
+    """
+    Split sentence into words and replace number words with numbers
+    """
+    tokes = list()
+    split_sent = sent.split(" ")
+    i = 0
+    while i < len(split_sent):
+        # replace every number word with the corresponding digits
+        if split_sent[i] in number_words and not annoying_number_word(split_sent, i):
+            j = 1
+            while i + j < len(split_sent) and split_sent in number_words and not annoying_number_word(split_sent,
+                                                                                                      i + j):
+                j += 1
+            tokes.append(str(w2n.word_to_num(" ".join(split_sent[i:i + j]))))
+            i += j
+        else:
+            tokes.append(split_sent[i])
+            i += 1
+
+    return tokes
+
+
 def append_candidate_rels(entry, summ, prons, all_ents, players, teams, cities):
     """
     Appends tuples of form (sentence_tokens, [rels]) to candrels.
     """
     sents = sent_tokenize(summ)
     candrels = []
-    for j, sent in enumerate(sents):
-        tokes = sent.split()
+    for sent in sents:
+        tokes = split_sent(sent)
         ents = extract_entities(tokes, all_ents, prons)
         nums = extract_numbers(tokes)
         rels = get_rels(entry, ents, nums, players, teams, cities)
