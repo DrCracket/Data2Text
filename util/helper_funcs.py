@@ -6,7 +6,7 @@
 
 from word2number import w2n
 from nltk import sent_tokenize
-from .constants import singular_prons, plural_prons, number_words, prons, device, suffixes, NUM_PLAYERS
+from .constants import singular_prons, plural_prons, number_words, prons, device, suffixes, abbr2ent, NUM_PLAYERS
 from .data_structures import DefaultListOrderedDict
 
 
@@ -218,12 +218,21 @@ def get_rels(entry, ents, nums, players, teams, cities):
     return rels
 
 
+def preproc_text(text):
+    """
+    Replace abbrevations with their full identifier
+    """
+    for key, value in abbr2ent:
+        text = text.replace(key, value)
+    return text
+
+
 def split_sent(sent):
     """
     Split sentence into words and replace number words with numbers
     """
     tokes = list()
-    split_sent = sent.split(" ")
+    split_sent = preproc_text(sent).split(" ")
     i = 0
     while i < len(split_sent):
         # replace every number word with the corresponding digits

@@ -14,7 +14,7 @@ from os import path, makedirs
 from json import loads
 from .constants import (number_words, device, TEXT_MAX_LENGTH, BOS_WORD, EOS_WORD, multi_word_cities,
                         multi_word_teams, MAX_CONTENT_PLAN_LENGTH, MIN_CONTENT_PLAN_LENGTH)
-from .helper_funcs import annoying_number_word, extract_entities, extract_numbers, to_device
+from .helper_funcs import annoying_number_word, extract_entities, extract_numbers, to_device, preproc_text
 from .planner import load_planner_data
 from .data_structures import OrderedCounter, Vocab, CopyDataset
 
@@ -143,7 +143,7 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
             all_ents.add(value)
         copy_values.append(value)
 
-    for sent in sent_tokenize(" ".join(summary).replace("LA", "Los Angeles")):
+    for sent in sent_tokenize(preproc_text(" ".join(summary))):
         tokes = list()
         split_sent = sent.split(" ")
         i = 0

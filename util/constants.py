@@ -31,7 +31,8 @@ ls_keys = ["TEAM-PTS_QTR1", "TEAM-PTS_QTR2", "TEAM-PTS_QTR3", "TEAM-PTS_QTR4",
 suffixes = ["II", "III", "Jr.", "Jr"]
 multi_word_cities = ["Golden State", "Los Angeles", "New Orleans", "Oklahoma City", "San Antonio", "New York"]
 multi_word_teams = ["Trail Blazers"]
-
+abbr2ent = {"Cavs": "Cavaliers", "Sixers": "76ers", "Mavs": "Mavericks", "Wolves": "Timberwolves",
+            "Blazers": "Trail Blazers", "LA": "Los Angeles"}
 NUM_PLAYERS = 13
 MAX_RECORDS = 2 * NUM_PLAYERS * len(bs_keys) + 2 * len(ls_keys)
 

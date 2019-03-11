@@ -98,6 +98,7 @@ def create_records(entry, vocab=None):
         record = list()
         team = entry["home_line"]["TEAM-NAME"]
         city = entry["home_line"]["TEAM-CITY"]
+        city = city if city != "LA" else "Los Angeles"
         record.append(team)
         record.append(key)
         record.append(entry["home_line"][key])
@@ -110,6 +111,7 @@ def create_records(entry, vocab=None):
         record = list()
         team = entry["vis_line"]["TEAM-NAME"]
         city = entry["vis_line"]["TEAM-CITY"]
+        city = city if city != "LA" else "Los Angeles"
         record.append(team)
         record.append(key)
         record.append(entry["vis_line"][key])
@@ -125,7 +127,7 @@ def split_entities(entity_string):
     """
     split a string into its entities
     """
-    entity_string = entity_string.replace(UNK_WORD, "").replace("LA", "Los Angeles")
+    entity_string = entity_string.replace(UNK_WORD, "")
     for city in multi_word_cities:
         if city == entity_string:
             return [city]
@@ -173,7 +175,7 @@ def resolve_entity(entity, total_entities):
     assign an extracted entity from the text to its corresponding dataset
     entity
     """
-    entity = entity.replace(UNK_WORD, "").replace("LA", "Los Angeles")
+    entity = entity.replace(UNK_WORD, "")
     sorted_by_relevance = sorted([(key, len(set(key.split()).intersection(entity.split())))
                                  for key in total_entities], key=lambda word: word[1], reverse=True)
     matches = list()
