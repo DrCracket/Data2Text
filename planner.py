@@ -62,6 +62,7 @@ class RecordEncoder(nn.Module):
 class ContentPlanner(nn.Module):
     def __init__(self, input_size, hidden_size=600):
         super(ContentPlanner, self).__init__()
+        self.hidden_size = hidden_size
         self.selected_content = None
 
         self.record_encoder = RecordEncoder(input_size, hidden_size)
