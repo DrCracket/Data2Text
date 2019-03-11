@@ -24,15 +24,17 @@ def get_ents(dat):
         teams.add(thing["home_city"] + " " + thing["home_name"])
         teams.add(thing["home_city"] + " " + thing["home_line"]["TEAM-NAME"])
         # special case for this
-        if thing["vis_city"] == "Los Angeles":
-            teams.add("LA" + thing["vis_name"])
-        if thing["home_city"] == "Los Angeles":
-            teams.add("LA" + thing["home_name"])
+        if thing["vis_city"] == "LA":
+            teams.add("Los Angeles" + " " + thing["vis_name"])
+        if thing["home_city"] == "LA":
+            teams.add("Los Angeles" + " " + thing["home_name"])
         # sometimes team_city is different
         cities.add(thing["home_city"])
         cities.add(thing["vis_city"])
         players.update(thing["box_score"]["PLAYER_NAME"].values())
         cities.update(thing["box_score"]["TEAM_CITY"].values())
+        if "LA" in cities:
+            cities.add("Los Angeles")
 
     for entset in [players, teams, cities]:
         for k in list(entset):
