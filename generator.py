@@ -47,22 +47,20 @@ class TextGenerator(nn.Module):
         # shape = (batch_size, 1, word_hidden_size)
         embedded = self.embedding(word).unsqueeze(1)
         # hidden.shape = (batch_size, 1, 2 * hidden_size)
-        hidden, (_, cell) = self.decoder_rnn(embedded, (hidden, cell))
+        output, (new_hidden, new_cell) = self.decoder_rnn(embedded, (hidden, cell))
         # shape = (batch_size, 2 * hidden_size, seq_len)
         enc_lin = self.linear(self.encoded).transpose(1, 2)
         # shape = (batch_size, 1, seq_len)
-        attention = F.softmax(torch.bmm(hidden, enc_lin), dim=2)
+        attention = F.softmax(torch.bmm(output, enc_lin), dim=2)
         # shape = (batch_size, 1, 2 * hidden_size)
         selected = torch.bmm(attention, self.encoded)
 
-        new_hidden = self.tanh_mlp(torch.cat((hidden, selected), dim=2))
-        out_prob = self.soft_mlp(new_hidden).squeeze(1)
-        p_copy = self.sig_copy(new_hidden).squeeze(1)
+        att_hidden = self.tanh_mlp(torch.cat((output, selected), dim=2))
+        out_prob = self.soft_mlp(att_hidden).squeeze(1)
+        p_copy = self.sig_copy(output).squeeze(1)
         log_attention = attention.log().squeeze(1)
 
-        # shape = (2, batch_size, hidden_size)
-        new_hidden = new_hidden.squeeze(1).view(new_hidden.size(0), 2, -1).transpose(1, 0)
-        return out_prob, log_attention, p_copy, new_hidden, cell,
+        return out_prob, log_attention, p_copy, new_hidden, new_cell
 
     def init_hidden(self, records):
         """
