@@ -32,7 +32,7 @@ suffixes = ["II", "III", "Jr.", "Jr"]
 multi_word_cities = ["Golden State", "Los Angeles", "New Orleans", "Oklahoma City", "San Antonio", "New York"]
 multi_word_teams = ["Trail Blazers"]
 abbr2ent = {"Cavs": "Cavaliers", "Sixers": "76ers", "Mavs": "Mavericks", "Wolves": "Timberwolves",
-            "Blazers": "Trail Blazers", "LA": "Los Angeles"}
+            "LA": "Los Angeles"}
 NUM_PLAYERS = 13
 MAX_RECORDS = 2 * NUM_PLAYERS * len(bs_keys) + 2 * len(ls_keys)
 

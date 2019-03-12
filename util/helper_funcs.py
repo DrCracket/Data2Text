@@ -6,7 +6,8 @@
 
 from word2number import w2n
 from nltk import sent_tokenize
-from .constants import singular_prons, plural_prons, number_words, prons, device, suffixes, abbr2ent, NUM_PLAYERS
+from .constants import (singular_prons, plural_prons, number_words, prons, device, suffixes, abbr2ent,
+                        multi_word_cities, multi_word_teams, NUM_PLAYERS)
 from .data_structures import DefaultListOrderedDict
 
 
@@ -226,7 +227,22 @@ def preproc_text(text):
     """
     for key, value in abbr2ent.items():
         text = text.replace(key, value)
-    return text
+    split_text = text.split(" ")
+    tokes = []
+    i = 0
+    while i < len(split_text):
+        if " ".join(split_text[i:i + 2]) in multi_word_cities + multi_word_teams:
+            tokes.extend(split_text[i:i + 2])
+            i += 2
+        # substitute 1 word identifiers for multi-word cities/teams
+        elif any(split_text[i] in ident.split() for ident in multi_word_cities + multi_word_teams):
+            tokes.append(next(ident for ident in multi_word_cities + multi_word_teams
+                              if split_text[i] in ident.split()))
+            i += 1
+        else:
+            tokes.append(split_text[i])
+            i += 1
+    return " ".join(tokes)
 
 
 def split_sent(sent):

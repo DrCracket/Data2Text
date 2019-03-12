@@ -160,11 +160,6 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
             elif " ".join(split_sent[i:i + 2]) in multi_word_cities + multi_word_teams:
                 tokes.append(" ".join(split_sent[i:i + 2]))
                 i += 2
-            # substitute 1 word identifiers for multi-word cities/teams
-            elif any(split_sent[i] in ident.split() for ident in multi_word_cities + multi_word_teams):
-                tokes.append(next(ident for ident in multi_word_cities + multi_word_teams
-                                  if split_sent[i] in ident.split()))
-                i += 1
             else:
                 tokes.append(split_sent[i])
                 i += 1
