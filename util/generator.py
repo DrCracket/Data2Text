@@ -65,7 +65,7 @@ def make_content_plan(planner, dataset):
     return content_plans.cpu(), record_indices.cpu()
 
 
-def make_train_content_plan(planner, dataset):
+def make_train_content_plan(dataset):
     """
     Generate a content plan with a trained content planner for the generator.
     Use the extractor to identify the records to copy.
@@ -75,13 +75,10 @@ def make_train_content_plan(planner, dataset):
     # size = (#entries, records, hidden_size)
     content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, 4, dtype=torch.long, device=device)
     record_indices = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dtype=torch.long, device=device)
-    planner.eval()
-    planner.to(device)
 
     with torch.no_grad():
         for dim1 in range(len(dataset)):
             records, content_plan = to_device(dataset[dim1])
-            planner.init_hidden(records.unsqueeze(0))
             content_plan_iterator = iter(content_plan)
             next(content_plan_iterator)  # skip BOS word
 
@@ -203,7 +200,7 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
 def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-data", dataset="rotowire"):
     plan_dataset = load_planner_data(corpus_type, extractor, folder, dataset)
     if corpus_type == "train":
-        content_plans, record_indices = make_train_content_plan(planner, plan_dataset)
+        content_plans, record_indices = make_train_content_plan(plan_dataset)
     else:
         content_plans, record_indices = make_content_plan(planner, plan_dataset)
     summaries = list()
