@@ -11,8 +11,8 @@ from torch.nn.utils.rnn import pad_sequence
 from word2number import w2n
 from os import path, makedirs
 from json import loads
-from .constants import (PAD_WORD, UNK_WORD, BOS_WORD, EOS_WORD, NUM_PLAYERS, bs_keys, multi_word_cities, suffixes,
-                        multi_word_teams, ls_keys, device, number_words, HOME, AWAY, MAX_RECORDS)
+from .constants import (PAD_WORD, UNK_WORD, BOS_WORD, EOS_WORD, NUM_PLAYERS, bs_keys,
+                        ls_keys, device, number_words, HOME, AWAY, MAX_RECORDS)
 from .data_structures import Vocab, DefaultListOrderedDict, SequenceDataset
 from .helper_funcs import get_player_idxs, to_device
 from .extractor import load_extractor_data
@@ -123,24 +123,6 @@ def create_records(entry, vocab=None):
     return records, vocab
 
 
-def split_entities(entity_string):
-    """
-    split a string into its entities
-    """
-    entity_string = entity_string.replace(UNK_WORD, "")
-    for city in multi_word_cities:
-        if city == entity_string:
-            return [city]
-        if city in entity_string:
-            return [city] + entity_string.replace(city, "").split()
-    for team in multi_word_teams:
-        if team == entity_string:
-            return [city]
-        if team in entity_string:
-            return entity_string.replace(team, "").split() + [team]
-    return [piece for piece in entity_string.split() if len(piece) > 1 and piece not in suffixes]
-
-
 def match_records(entity, type_, value, matched_records, already_added):
     """
     Determine which record to use from an entity
@@ -155,15 +137,13 @@ def match_records(entity, type_, value, matched_records, already_added):
             # name should be added only once
             if record[0] not in already_added:
                 already_added.append(record[0])
-                for name in split_entities(entity):
-                    _, name_pos, _ = match_records(entity, "PLAYER-FIRST_NAME", name, matched_records, already_added)
-                    indices.extend(name_pos)
-                    _, name_pos, _ = match_records(entity, "PLAYER-SECOND_NAME", name, matched_records, already_added)
-                    indices.extend(name_pos)
-                    _, name_pos, _ = match_records(entity, "TEAM-CITY", name, matched_records, already_added)
-                    indices.extend(name_pos)
-                    _, name_pos, _ = match_records(entity, "TEAM-NAME", name, matched_records, already_added)
-                    indices.extend(name_pos)
+                name_indices = []
+                for name_idx, name_record in matched_records:
+                    if name_record[1] in ["PLAYER-FIRST_NAME", "TEAM-CITY"]:
+                        name_indices.insert(0, name_idx)
+                    elif name_record[1] in ["PLAYER-SECOND_NAME", "TEAM-NAME"]:
+                        name_indices.append(name_idx)
+                indices.extend(name_indices)
             indices.append(idx)
             break
 
