@@ -67,7 +67,7 @@ def make_content_plan(planner, dataset):
 
 def make_train_content_plan(dataset):
     """
-    Generate a content plan with a trained content planner for the generator.
+    Generate a content plan for the generator.
     Use the extractor to identify the records to copy.
     Only used for training.
     """
