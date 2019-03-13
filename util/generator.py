@@ -208,7 +208,7 @@ def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-dat
         raw_dataset = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())
 
     for idx, rel_idx in enumerate(plan_dataset.idx_list):
-        entry_records, _ = plan_dataset[idx]
+        entry_records, _ = records[idx]
         entry_indices = content_plans[idx]
         summary = raw_dataset[rel_idx]["summary"]
 
