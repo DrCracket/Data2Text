@@ -14,7 +14,7 @@ from ignite.handlers import ModelCheckpoint
 from util.planner import load_planner_data
 from util.constants import BOS_WORD, EOS_WORD, PAD_WORD
 from os import path, makedirs
-from util.constants import MAX_CONTENT_PLAN_LENGTH, device
+from util.constants import device
 from util.helper_funcs import to_device
 from util.metrics import BleuScore
 
@@ -223,7 +223,7 @@ def eval_planner(extractor, content_planner, test=False):
                 generated_plan = list()
                 gold_plan = content_plan[content_plan > data.vocab[PAD_WORD]][1:-1].tolist()
 
-                while len(generated_plan) < MAX_CONTENT_PLAN_LENGTH:
+                while len(generated_plan) < content_plan.size(1):
                     output, hidden, cell = content_planner(input_index, hidden, cell)
                     input_index = output.argmax(dim=1)
                     if input_index.cpu() == data.vocab[EOS_WORD]:
