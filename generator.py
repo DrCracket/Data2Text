@@ -62,12 +62,13 @@ class TextGenerator(nn.Module):
 
         return out_prob, log_attention, p_copy, new_hidden, new_cell
 
-    def init_hidden(self, records):
+    def init_hidden(self, records, content_plan):
         """
         Compute the initial hidden state and cell state of the Content Planning LSTM.
         Use an RNN to encode the record representations from the planning stage record encoder.
         """
-        encoded_records = self.record_encoder(records)
+        self.record_encoder(records)
+        encoded_records = self.get_encodings(content_plan)
         # encoded.shape = (batch_size, seq_len, 2 * hidden_size)
         self.encoded, (hidden, cell) = self.encoder_rnn(encoded_records)
         return hidden, cell
@@ -96,9 +97,9 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
         generator.train()
         optimizer.zero_grad()
         use_teacher_forcing = True if random() < teacher_forcing_ratio else False
-        text, copy_tgts, content_plan, copy_indices, copy_values = to_device(batch)
+        text, copy_tgts, records, content_plan, copy_indices, copy_values = to_device(batch)
         # remove all the zero padded values from the content plans
-        hidden, cell = generator.init_hidden(content_plan[:, :(content_plan > 0).max(dim=2)[0].sum(dim=1)])
+        hidden, cell = generator.init_hidden(records, content_plan[:, :(content_plan > 0).max(dim=2)[0].sum(dim=1)])
         text_iter, copy_index_iter = zip(text.t(), copy_tgts.t()), iter(copy_indices.t())
         input_word, _ = next(text_iter)
 
@@ -180,9 +181,9 @@ def eval_generator(extractor, content_planner, generator, test=False):
         co_metric = COMetric(extractor, "test" if test else "valid")
         bleu_metric = BleuScore()
         for idx, batch in enumerate(loader):
-            gold_text, _, content_plan, _, copy_values = to_device(batch)
+            gold_text, _, records, content_plan, _, copy_values = to_device(batch)
             # remove all the zero padded values from the content plans
-            hidden, cell = generator.init_hidden(content_plan[:, :(content_plan > 0).max(dim=2)[0].sum(dim=1)])
+            hidden, cell = generator.init_hidden(records, content_plan[:, :(content_plan > 0).max(dim=2)[0].sum(dim=1)])
             input_word = torch.tensor([data.vocab[BOS_WORD]]).to(device, non_blocking=True)
             text = [input_word.item()]
 

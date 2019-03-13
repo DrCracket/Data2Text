@@ -13,7 +13,7 @@ from word2number import w2n
 from os import path, makedirs
 from json import loads
 from .constants import (number_words, device, TEXT_MAX_LENGTH, BOS_WORD, EOS_WORD, multi_word_cities,
-                        multi_word_teams, MAX_CONTENT_PLAN_LENGTH, MIN_CONTENT_PLAN_LENGTH)
+                        multi_word_teams)
 from .helper_funcs import annoying_number_word, extract_entities, extract_numbers, to_device, preproc_text
 from .planner import load_planner_data
 from .data_structures import OrderedCounter, Vocab, CopyDataset
@@ -23,10 +23,10 @@ def make_content_plan(planner, dataset):
     """
     Generate a content plan with a trained content planner for the generator.
     """
-    dim1 = dataset.sequence.size(0)
+    data_dim1 = dataset.sequence.size(0)
+    data_dim2 = dataset.sequence.size(1)
     # size = (#entries, records, hidden_size)
-    content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, 4, dtype=torch.long, device=device)
-    record_indices = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dtype=torch.long, device=device)
+    content_plans = torch.zeros(data_dim1, data_dim2, dtype=torch.long, device=device)
     bos_tensor = torch.tensor([dataset.vocab[BOS_WORD]], device=device)
     planner.eval()
     planner.to(device)
@@ -38,8 +38,7 @@ def make_content_plan(planner, dataset):
             record_index = bos_tensor
             dim2 = 0
             iteration = 0
-            # a content plan has to include at least MIN_CONTENT_PLAN_LENGTH records
-            while not record_index == dataset.vocab[EOS_WORD] or dim2 < MIN_CONTENT_PLAN_LENGTH:
+            while not record_index == dataset.vocab[EOS_WORD]:
                 output, hidden, cell = planner(record_index, hidden, cell)
                 # in 0.002% of all cases the content plan would be empty. To prevent that use the next likeliest
                 # record in the distribution that isn't a special record like BOS, EOS, PAD
@@ -52,17 +51,16 @@ def make_content_plan(planner, dataset):
                 else:
                     record_index = output.argmax(dim=1)
                 # must be unique and shouldn't be unavailable
-                if dataset.idx2word[records[record_index][0][2].item()] != "N/A" and record_index not in record_indices[dim1]:
-                    content_plans[dim1][dim2] = records[record_index]
-                    record_indices[dim1][dim2] = record_index
+                if dataset.idx2word[records[record_index][0][2].item()] != "N/A" and record_index not in content_plans[dim1]:
+                    content_plans[dim1][dim2] = record_index
                     dim2 += 1
                 # allow at most MAX_CONTENT_PLAN_LENGTH sentences
-                if iteration < MAX_CONTENT_PLAN_LENGTH - 1:
+                if iteration < data_dim2 - 1:
                     iteration += 1
                 else:
                     break
 
-    return content_plans.cpu(), record_indices.cpu()
+    return dataset.sequence, content_plans.cpu()
 
 
 def make_train_content_plan(dataset):
@@ -71,10 +69,10 @@ def make_train_content_plan(dataset):
     Use the extractor to identify the records to copy.
     Only used for training.
     """
-    dim1 = dataset.sequence.size(0)
+    data_dim1 = dataset.sequence.size(0)
+    data_dim2 = dataset.sequence.size(1)
     # size = (#entries, records, hidden_size)
-    content_plans = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, 4, dtype=torch.long, device=device)
-    record_indices = torch.zeros(dim1, MAX_CONTENT_PLAN_LENGTH, dtype=torch.long, device=device)
+    content_plans = torch.zeros(data_dim1, data_dim2, dtype=torch.long, device=device)
 
     with torch.no_grad():
         for dim1 in range(len(dataset)):
@@ -88,13 +86,11 @@ def make_train_content_plan(dataset):
                     # in this case add an unrelated record to avoid an empty content plan
                     if dim2 == 0:
                         index = torch.tensor([629], device=device)
-                        content_plans[dim1][dim2] = records[index]
-                        record_indices[dim1][dim2] = index
+                        content_plans[dim1][dim2] = index
                     break
-                content_plans[dim1][dim2] = records[record_index]
-                record_indices[dim1][dim2] = record_index
+                content_plans[dim1][dim2] = record_index
 
-    return content_plans.cpu(), record_indices.cpu()
+    return dataset.sequence, content_plans.cpu()
 
 
 def extract_things_ordered(tokes, all_ents, records, entry_indices, idx2word):
@@ -200,9 +196,9 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
 def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-data", dataset="rotowire"):
     plan_dataset = load_planner_data(corpus_type, extractor, folder, dataset)
     if corpus_type == "train":
-        content_plans, record_indices = make_train_content_plan(plan_dataset)
+        records, content_plans = make_train_content_plan(plan_dataset)
     else:
-        content_plans, record_indices = make_content_plan(planner, plan_dataset)
+        records, content_plans = make_content_plan(planner, plan_dataset)
     summaries = list()
     all_p_copy = list()
     all_copy_indices = list()
@@ -212,12 +208,13 @@ def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-dat
         raw_dataset = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())
 
     for idx, rel_idx in enumerate(plan_dataset.idx_list):
-        records, _ = plan_dataset[idx]
-        entry_indices = record_indices[idx]
+        entry_records, _ = plan_dataset[idx]
+        entry_indices = content_plans[idx]
         summary = raw_dataset[rel_idx]["summary"]
 
-        summary, p_copy, copy_indices, copy_values = get_copy_probs(summary, entry_indices[entry_indices > 0], records,
-                                                                    plan_dataset.vocab, plan_dataset.idx2word)
+        summary, p_copy, copy_indices, copy_values = get_copy_probs(summary, entry_indices[entry_indices > 0],
+                                                                    entry_records, plan_dataset.vocab,
+                                                                    plan_dataset.idx2word)
         summary.insert(0, BOS_WORD)
         summary.append(EOS_WORD)
         summaries.append(summary)
@@ -254,11 +251,12 @@ def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-dat
     torch.save(all_p_copy, f".cache/generator/{corpus_type}_p_copy.pt")
     torch.save(all_copy_indices, f".cache/generator/{corpus_type}_copy_indices.pt")
     torch.save(all_copy_values, f".cache/generator/{corpus_type}_copy_values.pt")
+    torch.save(records, f".cache/generator/{corpus_type}_records.pt")
     torch.save(content_plans, f".cache/generator/{corpus_type}_content_plans.pt")
     pickle.dump(vocab, open(".cache/generator/vocab.pt", "wb"))
     pickle.dump(plan_dataset.idx_list, open(f".cache/generator/{corpus_type}_idx_list.pt", "wb"))
 
-    return summaries, all_p_copy, all_copy_indices, all_copy_values, content_plans, vocab, plan_dataset.idx_list
+    return summaries, all_p_copy, all_copy_indices, all_copy_values, records, content_plans, vocab, plan_dataset.idx_list
 
 
 def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data", dataset="rotowire"):
@@ -270,6 +268,7 @@ def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data",
         p_copy = torch.load(f".cache/generator/{corpus_type}_p_copy.pt")
         copy_indices = torch.load(f".cache/generator/{corpus_type}_copy_indices.pt")
         copy_values = torch.load(f".cache/generator/{corpus_type}_copy_values.pt")
+        records = torch.load(f".cache/generator/{corpus_type}_records.pt")
         content_plans = torch.load(f".cache/generator/{corpus_type}_content_plans.pt")
         vocab = pickle.load(open(".cache/generator/vocab.pt", "rb"))
         idx_list = pickle.load(open(f".cache/generator/{corpus_type}_idx_list.pt", "rb"))
@@ -277,11 +276,11 @@ def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data",
     except FileNotFoundError:
         logging.warning(f"Failed to locate cached generator {corpus_type} corpus!")
         logging.info(f"Generating a new corpus...")
-        summaries, p_copy, copy_indices, copy_values, content_plans, vocab, idx_list = preproc_generator_data(
+        summaries, p_copy, copy_indices, copy_values, records, content_plans, vocab, idx_list = preproc_generator_data(
             corpus_type, extractor, planner, folder, dataset)
 
     idx2word = dict(((v, k) for k, v in vocab.items()))
-    return CopyDataset(summaries, p_copy, copy_indices, copy_values, content_plans, vocab, idx2word, idx_list)
+    return CopyDataset(summaries, p_copy, copy_indices, copy_values, records, content_plans, vocab, idx2word, idx_list)
 
 
 class TextGeneratorWrapper():

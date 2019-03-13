@@ -110,13 +110,15 @@ class CopyDataset(SequenceDataset):
     p_copy = None
     copy_indices = None
     copy_values = None
+    records = None
 
-    def __init__(self, sequence, p_copy, copy_indices, copy_values, content_plan, vocab, idx2word, idx_list):
+    def __init__(self, sequence, p_copy, copy_indices, copy_values, records, content_plan, vocab, idx2word, idx_list):
         super().__init__(sequence, content_plan, vocab, idx2word, idx_list)
         self.p_copy = p_copy
         self.copy_indices = copy_indices
         self.copy_values = copy_values
+        self.records = records
 
     def __getitem__(self, idx):
-        return (self.sequence[idx], self.p_copy[idx], self.content_plan[idx],
+        return (self.sequence[idx], self.p_copy[idx], self.records[idx], self.content_plan[idx],
                 self.copy_indices[idx], self.copy_values[idx])

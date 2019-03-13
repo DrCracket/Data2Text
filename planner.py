@@ -22,6 +22,8 @@ from util.metrics import BleuScore
 class RecordEncoder(nn.Module):
     def __init__(self, input_size, hidden_size=600):
         super(RecordEncoder, self).__init__()
+        self.encoded = None
+        self.hidden_size = hidden_size
 
         self.embedding = nn.Embedding(input_size, hidden_size)
         self.relu_mlp = nn.Sequential(
@@ -55,8 +57,19 @@ class RecordEncoder(nn.Module):
         emb_att = torch.bmm(attention, emb_relu)
         emb_gate = self.sigmoid_mlp(torch.cat((emb_relu, emb_att), 2))
         output = emb_gate * emb_relu
+        self.encoded = output
 
         return output
+
+    def get_encodings(self, index):
+        """
+        Get the record representations at the specified indices.
+        """
+        # size = (batch_size, indices) => size = (batch_size, indices, hidden_size)
+        index = index.unsqueeze(2).repeat(1, 1, self.hidden_size)
+        records = self.encoded.gather(1, index)
+
+        return records
 
 
 class ContentPlanner(nn.Module):
