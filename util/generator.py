@@ -54,7 +54,7 @@ def make_content_plan(planner, dataset):
                 if dataset.idx2word[records[record_index][0][2].item()] != "N/A" and record_index not in content_plans[dim1]:
                     content_plans[dim1][dim2] = record_index
                     dim2 += 1
-                # allow at most MAX_CONTENT_PLAN_LENGTH sentences
+                # allow at most data_dim2 sentences
                 if iteration < data_dim2 - 1:
                     iteration += 1
                 else:
