@@ -68,7 +68,7 @@ class TextGenerator(nn.Module):
         Use an RNN to encode the record representations from the planning stage record encoder.
         """
         self.record_encoder(records)
-        encoded_records = self.get_encodings(content_plan)
+        encoded_records = self.record_encoder.get_encodings(content_plan)
         # encoded.shape = (batch_size, seq_len, 2 * hidden_size)
         self.encoded, (hidden, cell) = self.encoder_rnn(encoded_records)
         return hidden, cell
