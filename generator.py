@@ -99,7 +99,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
         use_teacher_forcing = True if random() < teacher_forcing_ratio else False
         text, copy_tgts, records, content_plan, copy_indices, copy_values = to_device(batch)
         # remove all the zero padded values from the content plans
-        hidden, cell = generator.init_hidden(records, content_plan[:, :(content_plan > 0).max(dim=2)[0].sum(dim=1)])
+        hidden, cell = generator.init_hidden(records, content_plan[:, :(content_plan > 0).max(dim=1)[0].sum(dim=1)])
         text_iter, copy_index_iter = zip(text.t(), copy_tgts.t()), iter(copy_indices.t())
         input_word, _ = next(text_iter)
 
@@ -183,7 +183,7 @@ def eval_generator(extractor, content_planner, generator, test=False):
         for idx, batch in enumerate(loader):
             gold_text, _, records, content_plan, _, copy_values = to_device(batch)
             # remove all the zero padded values from the content plans
-            hidden, cell = generator.init_hidden(records, content_plan[:, :(content_plan > 0).max(dim=2)[0].sum(dim=1)])
+            hidden, cell = generator.init_hidden(records, content_plan[:, :(content_plan > 0).max(dim=1)[0].sum(dim=1)])
             input_word = torch.tensor([data.vocab[BOS_WORD]]).to(device, non_blocking=True)
             text = [input_word.item()]
 
