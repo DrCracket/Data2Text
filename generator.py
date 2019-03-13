@@ -51,14 +51,14 @@ class TextGenerator(nn.Module):
         # shape = (batch_size, 2 * hidden_size, seq_len)
         enc_lin = self.linear(self.encoded).transpose(1, 2)
         # shape = (batch_size, 1, seq_len)
-        attention = F.softmax(torch.bmm(output, enc_lin), dim=2)
+        attention = torch.bmm(output, enc_lin)
         # shape = (batch_size, 1, 2 * hidden_size)
-        selected = torch.bmm(attention, self.encoded)
+        selected = torch.bmm(F.softmax(attention, dim=2), self.encoded)
 
         att_hidden = self.tanh_mlp(torch.cat((output, selected), dim=2))
         out_prob = self.soft_mlp(att_hidden).squeeze(1)
         p_copy = self.sig_copy(output).squeeze(1)
-        log_attention = attention.log().squeeze(1)
+        log_attention = F.log_softmax(attention, dim=2).squeeze(1)
 
         return out_prob, log_attention, p_copy, new_hidden, new_cell
 
