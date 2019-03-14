@@ -21,13 +21,13 @@ from util.metrics import CSMetric, RGMetric, COMetric, BleuScore
 
 
 class TextGenerator(nn.Module):
-    def __init__(self, record_encoder, word_input_size, word_hidden_size=600, record_hidden_size=600, hidden_size=600):
+    def __init__(self, record_encoder, word_input_size, word_hidden_size=600, hidden_size=600):
         super().__init__()
         self.encoded = None
 
         self.record_encoder = record_encoder
         self.embedding = nn.Embedding(word_input_size, word_hidden_size)
-        self.encoder_rnn = nn.LSTM(record_hidden_size, hidden_size, batch_first=True, bidirectional=True)
+        self.encoder_rnn = nn.LSTM(self.record_encoder.hidden_size, hidden_size, batch_first=True, bidirectional=True)
         self.decoder_rnn = nn.LSTM(word_hidden_size, hidden_size, batch_first=True, bidirectional=True)
         self.linear = nn.Linear(2 * hidden_size, 2 * hidden_size)
         self.tanh_mlp = nn.Sequential(
