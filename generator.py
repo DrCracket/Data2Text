@@ -81,7 +81,7 @@ class TextGenerator(nn.Module):
 
 
 def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
-                    acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
+                    acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.9, log_interval=100):
     data = load_generator_data("train", extractor, content_planner)
     loader = DataLoader(data, shuffle=True, pin_memory=torch.cuda.is_available())  # online learning
 
@@ -99,8 +99,9 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
         optimizer.zero_grad()
         use_teacher_forcing = True if random() < teacher_forcing_ratio else False
         text, copy_tgts, records, content_plan, copy_indices, copy_values = to_device(batch)
-        # remove all the zero padded values from the content plans
-        hidden, cell = generator.init_hidden(records, content_plan[:, :(content_plan > 0).sum(dim=1)])
+        # remove all the zero padded values from content plans
+        content_plan = content_plan[:, :(content_plan > data.vocab[PAD_WORD]).sum(dim=1)]
+        hidden, cell = generator.init_hidden(records, content_plan)
         text_iter, copy_index_iter = zip(text.t(), copy_tgts.t()), iter(copy_indices.t())
         input_word, _ = next(text_iter)
 
@@ -183,8 +184,9 @@ def eval_generator(extractor, content_planner, generator, test=False):
         bleu_metric = BleuScore()
         for idx, batch in enumerate(loader):
             gold_text, _, records, content_plan, _, copy_values = to_device(batch)
-            # remove all the zero padded values from the content plans
-            hidden, cell = generator.init_hidden(records, content_plan[:, :(content_plan > 0).sum(dim=1)])
+            # remove all the zero padded values from content plans
+            content_plan = content_plan[:, :(content_plan > data.vocab[PAD_WORD]).sum(dim=1)]
+            hidden, cell = generator.init_hidden(records, content_plan)
             input_word = torch.tensor([data.vocab[BOS_WORD]]).to(device, non_blocking=True)
             text = [input_word.item()]
 
@@ -217,7 +219,7 @@ def eval_generator(extractor, content_planner, generator, test=False):
 
 
 def get_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
-                  acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
+                  acc_val_init=0.1, clip=7, teacher_forcing_ratio=0.9, log_interval=100):
     logging.info("Trying to load cached text generator model...")
     if path.exists("models/text_generator.pt"):
         data = load_generator_data("train", extractor, content_planner)
