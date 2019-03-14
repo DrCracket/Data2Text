@@ -50,7 +50,7 @@ def make_content_plan(planner, dataset):
                             break
                 else:
                     record_index = output.argmax(dim=1)
-                # must be unique and shouldn't be unavailable
+                # shouldn't be unavailable
                 if dataset.idx2word[records[record_index][0][2].item()] != "N/A":
                     content_plans[dim1][dim2] = record_index
                     dim2 += 1
@@ -59,6 +59,36 @@ def make_content_plan(planner, dataset):
                     iteration += 1
                 else:
                     break
+
+    return dataset.sequence, content_plans.cpu()
+
+
+def make_train_content_plan(dataset):
+    """
+    Generate a content plan for the generator.
+    Use the extractor to identify the records to copy.
+    Only used for training.
+    """
+    data_dim1 = dataset.sequence.size(0)
+    data_dim2 = dataset.sequence.size(1)
+    # size = (#entries, records, hidden_size)
+    content_plans = torch.zeros(data_dim1, data_dim2, dtype=torch.long, device=device)
+
+    with torch.no_grad():
+        for dim1 in range(len(dataset)):
+            records, content_plan = to_device(dataset[dim1])
+            content_plan_iterator = iter(content_plan)
+            next(content_plan_iterator)  # skip BOS word
+
+            for dim2, record_index in enumerate(content_plan_iterator):
+                if record_index == dataset.vocab[EOS_WORD]:
+                    # ugly workaround when the content plan is empty (only happens in one case)
+                    # in this case add an unrelated record to avoid an empty content plan
+                    if dim2 == 0:
+                        index = torch.tensor([629], device=device)
+                        content_plans[dim1][dim2] = index
+                    break
+                content_plans[dim1][dim2] = record_index
 
     return dataset.sequence, content_plans.cpu()
 
@@ -165,7 +195,10 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
 
 def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-data", dataset="rotowire"):
     plan_dataset = load_planner_data(corpus_type, extractor, folder, dataset)
-    records, content_plans = make_content_plan(planner, plan_dataset)
+    if corpus_type == "train":
+        records, content_plans = make_train_content_plan(plan_dataset)
+    else:
+        records, content_plans = make_content_plan(planner, plan_dataset)
     summaries = list()
     all_p_copy = list()
     all_copy_indices = list()
