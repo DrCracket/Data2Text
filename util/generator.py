@@ -12,7 +12,7 @@ from nltk import sent_tokenize
 from word2number import w2n
 from os import path, makedirs
 from json import loads
-from .constants import (number_words, device, TEXT_MAX_LENGTH, BOS_WORD, EOS_WORD, multi_word_cities,
+from .constants import (number_words, device, TEXT_MAX_LENGTH, PAD_WORD, BOS_WORD, EOS_WORD, multi_word_cities,
                         multi_word_teams)
 from .helper_funcs import annoying_number_word, extract_entities, extract_numbers, to_device, preproc_text
 from .planner import load_planner_data
@@ -298,9 +298,8 @@ class TextGeneratorWrapper():
 
         content_plan, copy_values = to_device([content_plan.unsqueeze(0), copy_values.unsqueeze(0)])
         # remove all the zero padded values from the content plans
-        non_zero = content_plan.nonzero()[:, 1].unique(sorted=True)
-        non_zero = non_zero.view(1, -1, 1).repeat(1, 1, content_plan.size(2))
-        hidden, cell = self.generator.init_hidden(content_plan.gather(1, non_zero))
+        content_plan = content_plan[:, :(content_plan > vocab[PAD_WORD]).sum(dim=1)]
+        hidden, cell = self.generator.init_hidden(content_plan)
 
         input_word = torch.tensor([vocab[BOS_WORD]], device=device)
         text = []

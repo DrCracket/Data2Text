@@ -56,10 +56,9 @@ class RecordEncoder(nn.Module):
         # size = (Batch, Records, hidden_size)
         emb_att = torch.bmm(attention, emb_relu)
         emb_gate = self.sigmoid_mlp(torch.cat((emb_relu, emb_att), 2))
-        output = emb_gate * emb_relu
-        self.encoded = output
+        self.encoded = emb_gate * emb_relu
 
-        return output
+        return self.encoded
 
     def get_encodings(self, index):
         """
