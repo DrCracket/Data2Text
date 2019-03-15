@@ -116,7 +116,7 @@ class ContentPlanner(nn.Module):
 ###############################################################################
 
 
-def train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1,
+def train_planner(extractor, epochs=25, learning_rate=0.05, acc_val_init=0.1,
                   clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     data = load_planner_data("train", extractor)
     loader = DataLoader(data, shuffle=True, pin_memory=torch.cuda.is_available())  # online learning
@@ -240,7 +240,7 @@ def eval_planner(extractor, content_planner, test=False):
     _evaluate()
 
 
-def get_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1,
+def get_planner(extractor, epochs=25, learning_rate=0.05, acc_val_init=0.1,
                 clip=7, teacher_forcing_ratio=1.0, log_interval=100):
     logging.info("Trying to load cached content selection & planning model...")
     if path.exists("models/content_planner.pt"):
