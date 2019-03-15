@@ -100,19 +100,28 @@ def extract_things_ordered(tokes, all_ents, records, entry_indices, idx2word):
     """
     ents = extract_entities(tokes, all_ents, list())
     nums = extract_numbers(tokes)
-    ents.extend(nums)
-    for thing in ents:
-        assert (thing[1] - thing[0]) == 1, "only things with length of 1 allowed"
-    sorted_things = [thing[0:3] for thing in sorted(ents, key=lambda x: x[0]) if len(thing) == 3 or not thing[3]]
-    non_num_entities = list()
 
-    for thing in sorted_things:
-        if type(thing[2]) == str:
-            for i, index in enumerate(entry_indices):
-                value = idx2word[records[index][2].item()]
-                entity = idx2word[records[index][0].item()]
-                if thing[2] == value:
-                    non_num_entities.append(entity)
+    # only copy an entity if number and entity combinations match a record
+    true_ents = set()
+    non_num_entities = set()
+    for index in entry_indices:
+        value = idx2word[records[index][2].item()]
+        entity = idx2word[records[index][0].item()]
+        for ent in ents:
+            if ent[2] == value:
+                for index2 in entry_indices:
+                    value2 = idx2word[records[index2][2].item()]
+                    entity2 = idx2word[records[index2][0].item()]
+                    for num in nums:
+                        if str(num[2]) == value2 and entity == entity2:
+                            true_ents.add(ent)
+                            non_num_entities.add(entity)
+                            break
+
+    true_ents.update(nums)
+    for thing in true_ents:
+        assert (thing[1] - thing[0]) == 1, "only things with length of 1 allowed"
+    sorted_things = [thing[0:3] for thing in sorted(true_ents, key=lambda x: x[0]) if len(thing) == 3 or not thing[3]]
 
     return sorted_things, non_num_entities
 
@@ -153,6 +162,10 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
             elif " ".join(split_sent[i:i + 2]) in multi_word_cities + multi_word_teams:
                 tokes.append(" ".join(split_sent[i:i + 2]))
                 i += 2
+            # sometimes name abbrevations don't contain dots in the dataset
+            elif len(split_sent[i]) <= 4 and split_sent[i].replace(".", "") in all_ents:
+                tokes.append(split_sent[i].replace(".", ""))
+                i += 1
             else:
                 tokes.append(split_sent[i])
                 i += 1
@@ -182,7 +195,7 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
                 for i, index in enumerate(entry_indices):
                     value = idx2word[records[index][2].item()]
                     entity = idx2word[records[index][0].item()]
-                    if thing[2] == value:
+                    if thing[2] == value and entity in non_num_entities:
                         p_copy[thing[0]:thing[1]] = [1]
                         copy_indices.append(i)
                         already_added_ents.add(entity)
