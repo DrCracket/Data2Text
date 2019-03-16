@@ -23,8 +23,8 @@ def make_content_plan(planner, dataset):
     """
     Generate a content plan with a trained content planner for the generator.
     """
-    data_dim1 = dataset.sequence.size(0)
-    data_dim2 = dataset.sequence.size(1)
+    data_dim1 = dataset.content_plan.size(0)
+    data_dim2 = dataset.content_plan.where(dataset.content_plan == 0, torch.tensor([1])).sum(dim=1).max()
     # size = (#entries, records, hidden_size)
     content_plans = torch.zeros(data_dim1, data_dim2, dtype=torch.long, device=device)
     bos_tensor = torch.tensor([dataset.vocab[BOS_WORD]], device=device)
@@ -37,8 +37,7 @@ def make_content_plan(planner, dataset):
             hidden, cell = planner.init_hidden(records.unsqueeze(0))
             record_index = bos_tensor
             dim2 = 0
-            iteration = 0
-            while not record_index == dataset.vocab[EOS_WORD]:
+            for _ in range(data_dim2):
                 output, hidden, cell = planner(record_index, hidden, cell)
                 # in 0.002% of all cases the content plan would be empty. To prevent that use the next likeliest
                 # record in the distribution that isn't a special record like BOS, EOS, PAD
@@ -50,15 +49,12 @@ def make_content_plan(planner, dataset):
                             break
                 else:
                     record_index = output.argmax(dim=1)
+                if record_index == dataset.vocab[EOS_WORD]:
+                    break
                 # shouldn't be unavailable
                 if dataset.idx2word[records[record_index][0][2].item()] != "N/A":
                     content_plans[dim1][dim2] = record_index
                     dim2 += 1
-                # allow at most data_dim2 sentences
-                if iteration < data_dim2 - 1:
-                    iteration += 1
-                else:
-                    break
 
     return dataset.sequence, content_plans.cpu()
 
@@ -69,8 +65,8 @@ def make_train_content_plan(dataset):
     Use the extractor to identify the records to copy.
     Only used for training.
     """
-    data_dim1 = dataset.sequence.size(0)
-    data_dim2 = dataset.sequence.size(1)
+    data_dim1 = dataset.content_plan.size(0)
+    data_dim2 = dataset.content_plan.where(dataset.content_plan == 0, torch.tensor([1])).sum(dim=1).max()
     # size = (#entries, records, hidden_size)
     content_plans = torch.zeros(data_dim1, data_dim2, dtype=torch.long, device=device)
 
@@ -136,6 +132,7 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
     all_p_copy = list()
     copy_indices = list()
     copy_values = list()
+    next_expected = 0
 
     # get all entities and corresponding values from record indices
     for index in entry_indices:
@@ -173,32 +170,41 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
         ents_and_nums, non_num_entities = extract_things_ordered(tokes, all_ents, records, entry_indices, idx2word)
         already_added_ents = set()
         for thing in ents_and_nums:
+            iter_list = list(enumerate(entry_indices))
+            # continue with the next index after the last predicted
+            iter_list = iter_list[next_expected:] + iter_list[:next_expected]
             if type(thing[2]) == int:
                 # find the num in entites whose identifiers where already copied
-                for i, index in enumerate(entry_indices):
+                for i, index in iter_list:
                     entity = idx2word[records[index][0].item()]
                     value = idx2word[records[index][2].item()]
                     if entity in already_added_ents and str(thing[2]) == value:
                         p_copy[thing[0]:thing[1]] = [1]
                         copy_indices.append(i)
+                        if i >= next_expected:
+                            next_expected = i + 1
                         break
                 # if they can't be found search in all entities that appear in the sentence
                 else:
-                    for i, index in enumerate(entry_indices):
+                    for i, index in iter_list:
                         entity = idx2word[records[index][0].item()]
                         value = idx2word[records[index][2].item()]
                         if entity in non_num_entities and str(thing[2]) == value:
                             p_copy[thing[0]:thing[1]] = [1]
                             copy_indices.append(i)
+                            if i >= next_expected:
+                                next_expected = i + 1
                             break
             else:
-                for i, index in enumerate(entry_indices):
+                for i, index in iter_list:
                     value = idx2word[records[index][2].item()]
                     entity = idx2word[records[index][0].item()]
                     if thing[2] == value and entity in non_num_entities:
                         p_copy[thing[0]:thing[1]] = [1]
                         copy_indices.append(i)
                         already_added_ents.add(entity)
+                        if i >= next_expected:
+                            next_expected = i + 1
                         break
         all_sents.extend(tokes)
         all_p_copy.extend(p_copy)
@@ -307,12 +313,12 @@ class TextGeneratorWrapper():
         self.generator = generator.eval().to(device)
 
     def generate_text(self, vocab, idx2word, entry):
-        _, _, content_plan, _, copy_values = entry
+        _, _, records, content_plan, _, copy_values = entry
 
         content_plan, copy_values = to_device([content_plan.unsqueeze(0), copy_values.unsqueeze(0)])
         # remove all the zero padded values from the content plans
         content_plan = content_plan[:, :(content_plan > vocab[PAD_WORD]).sum(dim=1)]
-        hidden, cell = self.generator.init_hidden(content_plan)
+        hidden, cell = self.generator.init_hidden(records, content_plan)
 
         input_word = torch.tensor([vocab[BOS_WORD]], device=device)
         text = []
