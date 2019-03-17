@@ -97,7 +97,7 @@ def genDescription(game, corpus_type, index, gen_summary, metrics):
     """
     Selects an entry of the json database and saves it as a markdown string
     """
-    filename = "b_game_{}.md".format(str(index + 1))
+    filename = "{}_{}.md".format(corpus_type, str(index + 1))
     description = str()
 
     # print the title
