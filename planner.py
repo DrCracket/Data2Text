@@ -29,9 +29,9 @@ class RecordEncoder(nn.Module):
         self.relu_mlp = nn.Sequential(
             nn.Linear(4 * hidden_size, hidden_size),
             nn.LeakyReLU())
-        self.linear = nn.Linear(hidden_size, hidden_size)
+        self.linear = nn.Linear(hidden_size, hidden_size, bias=False)
         self.sigmoid_mlp = nn.Sequential(
-            nn.Linear(2 * hidden_size, hidden_size),
+            nn.Linear(2 * hidden_size, hidden_size, bias=False),
             nn.Sigmoid())
 
     def forward(self, records):
@@ -79,7 +79,7 @@ class ContentPlanner(nn.Module):
 
         self.record_encoder = RecordEncoder(input_size, hidden_size)
         self.rnn = nn.LSTM(hidden_size, hidden_size, batch_first=True)
-        self.linear = nn.Linear(hidden_size, hidden_size)
+        self.linear = nn.Linear(hidden_size, hidden_size, bias=False)
 
     def forward(self, index, hidden, cell):
         """

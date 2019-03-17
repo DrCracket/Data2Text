@@ -29,9 +29,9 @@ class TextGenerator(nn.Module):
         self.embedding = nn.Embedding(word_input_size, word_hidden_size)
         self.encoder_rnn = nn.LSTM(self.record_encoder.hidden_size, hidden_size, batch_first=True, bidirectional=True)
         self.decoder_rnn = nn.LSTM(word_hidden_size, hidden_size, batch_first=True, bidirectional=True)
-        self.linear = nn.Linear(2 * hidden_size, 2 * hidden_size)
+        self.linear = nn.Linear(2 * hidden_size, 2 * hidden_size, bias=False)
         self.tanh_mlp = nn.Sequential(
-            nn.Linear(4 * hidden_size, 2 * hidden_size),
+            nn.Linear(4 * hidden_size, 2 * hidden_size, bias=False),
             nn.Tanh())
         self.soft_mlp = nn.Sequential(
             nn.Linear(2 * hidden_size, word_input_size),
@@ -46,19 +46,19 @@ class TextGenerator(nn.Module):
         """
         # shape = (batch_size, 1, word_hidden_size)
         embedded = self.embedding(word).unsqueeze(1)
-        # hidden.shape = (batch_size, 1, 2 * hidden_size)
+        # output.shape = (batch_size, seq_len, 2 * hidden_size)
         output, (new_hidden, new_cell) = self.decoder_rnn(embedded, (hidden, cell))
         # shape = (batch_size, 2 * hidden_size, seq_len)
         enc_lin = self.linear(self.encoded).transpose(1, 2)
         # shape = (batch_size, 1, seq_len)
-        attention = torch.bmm(output, enc_lin)
+        energy = torch.bmm(output, enc_lin)
         # shape = (batch_size, 1, 2 * hidden_size)
-        selected = torch.bmm(F.softmax(attention, dim=2), self.encoded)
+        selected = torch.bmm(F.softmax(energy, dim=2), self.encoded)
 
         att_hidden = self.tanh_mlp(torch.cat((output, selected), dim=2))
         out_prob = self.soft_mlp(att_hidden).squeeze(1)
         p_copy = self.sig_copy(output).squeeze(1)
-        log_attention = F.log_softmax(attention, dim=2).squeeze(1)
+        log_attention = F.log_softmax(energy, dim=2).squeeze(1)
 
         return out_prob, log_attention, p_copy, new_hidden, new_cell
 
@@ -114,13 +114,12 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
                 input_word, hidden, cell)
             loss += F.binary_cross_entropy(p_copy, copy_tgt.view(-1, 1))
             if copy_tgt:
-                copy_index = next(copy_index_iter)
-                loss += F.nll_loss(copy_prob, copy_index)
+                loss += F.nll_loss(copy_prob, next(copy_index_iter))
             else:
                 loss += F.nll_loss(out_prob, word)
             len_sequence += 1
             if use_teacher_forcing:
-                input_word = copy_values[:, copy_index].view(-1) if copy_tgt else word
+                input_word = word
             else:
                 if p_copy > 0.5:
                     input_word = copy_values[:, copy_prob.argmax(dim=1)].view(-1).detach()
@@ -180,7 +179,7 @@ def eval_generator(extractor, content_planner, generator, test=False):
         cs_metric = CSMetric(extractor, "test" if test else "valid")
         rg_metric = RGMetric(extractor, "test" if test else "valid")
         co_metric = COMetric(extractor, "test" if test else "valid")
-        bleu_metric = BleuScore()
+        bleu_metric = BleuScore(preproc=True)
         for idx, batch in enumerate(loader):
             gold_text, _, records, content_plan, _, copy_values = to_device(batch)
             # remove all the zero padded values from content plans
