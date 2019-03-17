@@ -121,7 +121,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
             if use_teacher_forcing:
                 input_word = word
             else:
-                if p_copy > 0.5:
+                if p_copy.round():
                     input_word = copy_values[:, copy_prob.argmax(dim=1)].view(-1).detach()
                 else:
                     input_word = out_prob.argmax(dim=1).detach()
@@ -192,7 +192,7 @@ def eval_generator(extractor, content_planner, generator, test=False):
                 while input_word.cpu() != data.vocab[EOS_WORD] and len(text) <= TEXT_MAX_LENGTH:
                     out_prob, copy_prob, p_copy, hidden, cell = generator(
                         input_word, hidden, cell)
-                    if p_copy > 0.5:
+                    if p_copy.round():
                         input_word = copy_values[:, copy_prob.argmax(dim=1)].view(1)
                     else:
                         input_word = out_prob.argmax(dim=1)
