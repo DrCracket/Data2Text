@@ -10,7 +10,7 @@ from json import loads
 from abc import abstractmethod, ABC
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from pyxdameraulevenshtein import normalized_damerau_levenshtein_distance
-from .helper_funcs import get_ents, append_candidate_rels, append_multilabeled_data
+from .helper_funcs import get_ents, append_candidate_rels, append_multilabeled_data, preproc_text
 from .extractor import load_extractor_data
 from .constants import prons, ls_keys, bs_keys, device
 from .data_structures import Vocab
@@ -298,12 +298,18 @@ class BleuScore():
     bleu = 0
     size = 0
     smooth = None
+    preproc = False
 
-    def __init__(self):
+    def __init__(self, preproc=False):
         self.smooth = SmoothingFunction().method1
+        self.preproc = preproc
 
     def __call__(self, reference, hypothesis):
-        self.bleu += sentence_bleu([reference], hypothesis, smoothing_function=self.smooth)
+        if self.preproc:
+            # preprocess the gold labels, so they are identical to the summaries the model trained on
+            self.bleu += sentence_bleu([preproc_text(" ".join(reference))], hypothesis, smoothing_function=self.smooth)
+        else:
+            self.bleu += sentence_bleu([reference], hypothesis, smoothing_function=self.smooth)
         self.size += 1
 
     def calculate(self):

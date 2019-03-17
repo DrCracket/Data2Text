@@ -221,7 +221,7 @@ def get_rels(entry, ents, nums, players, teams, cities):
     return rels
 
 
-def preproc_text(text):
+def resolve_abbr(text):
     """
     Replace abbrevations with their full identifier
     """
@@ -242,27 +242,27 @@ def preproc_text(text):
         else:
             tokes.append(split_text[i])
             i += 1
-    return " ".join(tokes)
+    return tokes
 
 
-def split_sent(sent):
+def preproc_text(text):
     """
-    Split sentence into words and replace number words with numbers
+    Preprocess text and return it as a list of tokens
     """
     tokes = list()
-    split_sent = preproc_text(sent).split(" ")
+    split_text = resolve_abbr(text)
     i = 0
-    while i < len(split_sent):
+    while i < len(split_text):
         # replace every number word with the corresponding digits
-        if split_sent[i] in number_words and not annoying_number_word(split_sent, i):
+        if split_text[i] in number_words and not annoying_number_word(split_text, i):
             j = 1
-            while i + j < len(split_sent) and split_sent in number_words and not annoying_number_word(split_sent,
+            while i + j < len(split_text) and split_text in number_words and not annoying_number_word(split_text,
                                                                                                       i + j):
                 j += 1
-            tokes.append(str(w2n.word_to_num(" ".join(split_sent[i:i + j]))))
+            tokes.append(str(w2n.word_to_num(" ".join(split_text[i:i + j]))))
             i += j
         else:
-            tokes.append(split_sent[i])
+            tokes.append(split_text[i])
             i += 1
 
     return tokes
@@ -275,7 +275,7 @@ def append_candidate_rels(entry, summ, prons, all_ents, players, teams, cities):
     sents = sent_tokenize(summ)
     candrels = []
     for sent in sents:
-        tokes = split_sent(sent)
+        tokes = preproc_text(sent)
         ents = extract_entities(tokes, all_ents, prons)
         nums = extract_numbers(tokes)
         rels = get_rels(entry, ents, nums, players, teams, cities)

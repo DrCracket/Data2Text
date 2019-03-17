@@ -9,12 +9,10 @@ import torch
 import logging
 from torch.nn.utils.rnn import pad_sequence
 from nltk import sent_tokenize
-from word2number import w2n
 from os import path, makedirs
 from json import loads
-from .constants import (number_words, device, TEXT_MAX_LENGTH, PAD_WORD, BOS_WORD, EOS_WORD, multi_word_cities,
-                        multi_word_teams)
-from .helper_funcs import annoying_number_word, extract_entities, extract_numbers, to_device, preproc_text
+from .constants import device, TEXT_MAX_LENGTH, PAD_WORD, BOS_WORD, EOS_WORD, multi_word_cities, multi_word_teams
+from .helper_funcs import extract_entities, extract_numbers, to_device, preproc_text
 from .planner import load_planner_data
 from .data_structures import OrderedCounter, Vocab, CopyDataset
 
@@ -142,21 +140,13 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
             all_ents.add(value)
         copy_values.append(value)
 
-    for sent in sent_tokenize(preproc_text(" ".join(summary))):
+    for sent in sent_tokenize(" ".join(summary)):
         tokes = list()
-        split_sent = sent.split(" ")
+        split_sent = preproc_text(sent)
         i = 0
         while i < len(split_sent):
-            # replace every number word with the corresponding digits
-            if split_sent[i] in number_words and not annoying_number_word(split_sent, i):
-                j = 1
-                while i + j < len(split_sent) and split_sent in number_words and not annoying_number_word(split_sent,
-                                                                                                          i + j):
-                    j += 1
-                tokes.append(str(w2n.word_to_num(" ".join(split_sent[i:i + j]))))
-                i += j
             # reassemble multi-word cities/teams
-            elif " ".join(split_sent[i:i + 2]) in multi_word_cities + multi_word_teams:
+            if " ".join(split_sent[i:i + 2]) in multi_word_cities + multi_word_teams:
                 tokes.append(" ".join(split_sent[i:i + 2]))
                 i += 2
             # sometimes name abbrevations don't contain dots in the dataset
