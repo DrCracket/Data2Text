@@ -21,8 +21,8 @@ def make_content_plan(planner, dataset):
     """
     Generate a content plan with a trained content planner for the generator.
     """
-    data_dim1 = dataset.content_plan.size(0)
-    data_dim2 = dataset.content_plan.where(dataset.content_plan == 0, torch.tensor([1])).sum(dim=1).max()
+    data_dim1 = dataset.sequence.size(0)
+    data_dim2 = dataset.sequence.size(1)
     # size = (#entries, records, hidden_size)
     content_plans = torch.zeros(data_dim1, data_dim2, dtype=torch.long, device=device)
     bos_tensor = torch.tensor([dataset.vocab[BOS_WORD]], device=device)
@@ -34,6 +34,7 @@ def make_content_plan(planner, dataset):
             records, _ = to_device(dataset[dim1])
             hidden, cell = planner.init_hidden(records.unsqueeze(0))
             record_index = bos_tensor
+            already_added = list()
             dim2 = 0
             for _ in range(data_dim2):
                 output, hidden, cell = planner(record_index, hidden, cell)
@@ -49,9 +50,10 @@ def make_content_plan(planner, dataset):
                     record_index = output.argmax(dim=1)
                 if record_index == dataset.vocab[EOS_WORD]:
                     break
-                # shouldn't be unavailable
-                if dataset.idx2word[records[record_index][0][2].item()] != "N/A":
+                # must be unique and shouldn't be unavailable
+                if dataset.idx2word[records[record_index][0][2].item()] != "N/A" and record_index not in already_added:
                     content_plans[dim1][dim2] = record_index
+                    already_added.append(record_index)
                     dim2 += 1
 
     return dataset.sequence, content_plans.cpu()
