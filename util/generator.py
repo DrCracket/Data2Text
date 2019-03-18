@@ -305,7 +305,8 @@ class TextGeneratorWrapper():
     def generate_text(self, vocab, idx2word, entry):
         _, _, records, content_plan, _, copy_values = entry
 
-        content_plan, copy_values = to_device([content_plan.unsqueeze(0), copy_values.unsqueeze(0)])
+        records, content_plan, copy_values = to_device([records.unsqueeze(0),
+                                                        content_plan.unsqueeze(0), copy_values.unsqueeze(0)])
         # remove all the zero padded values from the content plans
         content_plan = content_plan[:, :(content_plan > vocab[PAD_WORD]).sum(dim=1)]
         hidden, cell = self.generator.init_hidden(records, content_plan)
