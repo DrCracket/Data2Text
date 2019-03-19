@@ -2,6 +2,8 @@
 /.venv
 # directory for preprocessed data
 /data
+# directory for trained models
+/models
 # directory for generations
 /generations
 # ignore nltk tokenizers
