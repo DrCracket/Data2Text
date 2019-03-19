@@ -7,9 +7,12 @@
 import logging
 import argparse
 import datetime
-from extractor import train_extractor, eval_extractor, load_extractor, extractor_is_available
-from planner import train_planner, eval_planner, load_planner, planner_is_available
-from generator import train_generator, eval_generator, load_generator, generator_is_available
+from extractor import (train_extractor, eval_extractor, load_extractor,
+                       extractor_is_available)
+from planner import (train_planner, eval_planner, load_planner,
+                     planner_is_available)
+from generator import (train_generator, eval_generator, load_generator,
+                       generator_is_available)
 from util.pretty_print import genMdFiles
 
 
@@ -41,27 +44,55 @@ def get_generator(parser, cnn):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate descriptions for for data tables from the BoxScore dataset.")
-    parser.add_argument("--cnn", action="store_true", help="Global setting that controls if the cnn extractor should be used instead of the lstm extractor.")
-    parser.add_argument("--no-log", action="store_true", help="Disable generation of log-files.")
+    parser = argparse.ArgumentParser(description="""Generate descriptions for
+            for data tables from the BoxScore dataset.""")
+    parser.add_argument("--cnn",
+                        action="store_true",
+                        help="""Global setting that controls if the cnn
+                        extractor should be used instead of the lstm
+                        extractor.""")
+    parser.add_argument("--no-log",
+                        action="store_true",
+                        help="Disable generation of log-files.")
+
     subparsers = parser.add_subparsers(dest="command")
 
-    eval_parser = subparsers.add_parser("evaluate", help="Evaluate a model of the text generation pipeline.")
-    eval_parser.add_argument("--stage", choices=["extractor", "planner", "generator"], default="generator", help="Specify the model to evaluate.")
-    eval_parser.add_argument("--corpus", choices=["valid", "test"], default="valid", help="Specify the corpus to use for evaluation.")
+    eval_parser = subparsers.add_parser("evaluate",
+                                        help="""Evaluate a model of the text
+                                        generation pipeline.""")
+    eval_parser.add_argument("--stage",
+                             choices=["extractor", "planner", "generator"],
+                             default="generator",
+                             help="Specify the model to evaluate.")
+    eval_parser.add_argument("--corpus",
+                             choices=["valid", "test"],
+                             default="valid",
+                             help="Specify the corpus to use for evaluation.")
 
-    gen_parser = subparsers.add_parser("generate", help="Generate the textual descriptions for a corpus. Results are saved in the 'generations'-folder.")
-    gen_parser.add_argument("--corpus", choices=["train", "valid", "test"], default="valid", help="Specify the corpus to use for generation.")
+    gen_parser = subparsers.add_parser("generate",
+                                       help="""Generate the textual
+                                       descriptions for a corpus. Results are
+                                       saved in the 'generations'-folder.""")
+    gen_parser.add_argument("--corpus",
+                            choices=["train", "valid", "test"],
+                            default="valid",
+                            help="Specify the corpus to use for generation.")
 
-    gen_parser = subparsers.add_parser("train", help="Train the whole pipeline or a model from a specific pipeline stage.")
-    gen_parser.add_argument("--stage", choices=["extractor", "planner", "generator", "pipeline"], default="pipeline")
+    gen_parser = subparsers.add_parser("train",
+                                       help="""Train the whole pipeline or a
+                                       model from a specific pipeline
+                                       stage.""")
+    gen_parser.add_argument("--stage",
+                            choices=["extractor", "planner", "generator",
+                                     "pipeline"],
+                            default="pipeline")
 
     args = parser.parse_args()
 
     # configure logging
     if not args.no_log:
         now = datetime.datetime.now()
-        logging.basicConfig(level=logging.DEBUG,
+        logging.basicConfig(level=logging.INFO,
                             format="%(asctime)s %(levelname)-8s %(message)s",
                             datefmt="%m-%d %H:%M",
                             filename=now.strftime("%m-%d_%H:%M.log"),
