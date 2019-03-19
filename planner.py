@@ -160,7 +160,7 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1,
 
     trainer = Engine(_update)
     # save the model every 4 epochs
-    handler = ModelCheckpoint(".cache/model_cache", "planner", save_interval=4,
+    handler = ModelCheckpoint("data/model_cache", "planner", save_interval=4,
                               require_empty=False, save_as_state_dict=True)
     trainer.add_event_handler(Events.EPOCH_COMPLETED, handler, {"planner": content_planner})
 
@@ -242,7 +242,7 @@ def eval_planner(extractor, content_planner, test=False):
 
 def get_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1,
                 clip=7, teacher_forcing_ratio=1.0, log_interval=100):
-    logging.info("Trying to load cached content selection & planning model...")
+    logging.info("Trying to load content selection & planning model...")
     if path.exists("models/content_planner.pt"):
         data = load_planner_data("train", extractor)
         content_planner = ContentPlanner(len(data.idx2word))

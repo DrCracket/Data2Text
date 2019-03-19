@@ -243,8 +243,8 @@ def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-dat
             if word_counter[k] < 2:
                 del word_counter[k]  # will replace w/ unk
         vocab = Vocab(word_counter.keys(), eos_and_bos=True)
-    elif path.exists(".cache/generator/vocab.pt"):  # else load vocab
-        vocab = pickle.load(open(".cache/generator/vocab.pt", "rb"))
+    elif path.exists("data/generator/vocab.pt"):  # else load vocab
+        vocab = pickle.load(open("data/generator/vocab.pt", "rb"))
     else:  # if it doesn't exist create it
         _, _, _, _, vocab, _ = preproc_generator_data("train", extractor, planner, folder, dataset)
 
@@ -256,16 +256,16 @@ def preproc_generator_data(corpus_type, extractor, planner, folder="boxscore-dat
     all_copy_indices = pad_sequence(all_copy_indices, batch_first=True)
 
     # wite stuff to disk
-    if not path.exists(".cache/generator"):
-        makedirs(".cache/generator")
-    torch.save(summaries, f".cache/generator/{corpus_type}_summaries.pt")
-    torch.save(all_p_copy, f".cache/generator/{corpus_type}_p_copy.pt")
-    torch.save(all_copy_indices, f".cache/generator/{corpus_type}_copy_indices.pt")
-    torch.save(all_copy_values, f".cache/generator/{corpus_type}_copy_values.pt")
-    torch.save(records, f".cache/generator/{corpus_type}_records.pt")
-    torch.save(content_plans, f".cache/generator/{corpus_type}_content_plans.pt")
-    pickle.dump(vocab, open(".cache/generator/vocab.pt", "wb"))
-    pickle.dump(plan_dataset.idx_list, open(f".cache/generator/{corpus_type}_idx_list.pt", "wb"))
+    if not path.exists("data/generator"):
+        makedirs("data/generator")
+    torch.save(summaries, f"data/generator/{corpus_type}_summaries.pt")
+    torch.save(all_p_copy, f"data/generator/{corpus_type}_p_copy.pt")
+    torch.save(all_copy_indices, f"data/generator/{corpus_type}_copy_indices.pt")
+    torch.save(all_copy_values, f"data/generator/{corpus_type}_copy_values.pt")
+    torch.save(records, f"data/generator/{corpus_type}_records.pt")
+    torch.save(content_plans, f"data/generator/{corpus_type}_content_plans.pt")
+    pickle.dump(vocab, open("data/generator/vocab.pt", "wb"))
+    pickle.dump(plan_dataset.idx_list, open(f"data/generator/{corpus_type}_idx_list.pt", "wb"))
 
     return summaries, all_p_copy, all_copy_indices, all_copy_values, records, content_plans, vocab, plan_dataset.idx_list
 
@@ -275,17 +275,17 @@ def load_generator_data(corpus_type, extractor, planner, folder="boxscore-data",
     Load a dataset e.g. for use with a dataloader
     """
     try:
-        summaries = torch.load(f".cache/generator/{corpus_type}_summaries.pt")
-        p_copy = torch.load(f".cache/generator/{corpus_type}_p_copy.pt")
-        copy_indices = torch.load(f".cache/generator/{corpus_type}_copy_indices.pt")
-        copy_values = torch.load(f".cache/generator/{corpus_type}_copy_values.pt")
-        records = torch.load(f".cache/generator/{corpus_type}_records.pt")
-        content_plans = torch.load(f".cache/generator/{corpus_type}_content_plans.pt")
-        vocab = pickle.load(open(".cache/generator/vocab.pt", "rb"))
-        idx_list = pickle.load(open(f".cache/generator/{corpus_type}_idx_list.pt", "rb"))
+        summaries = torch.load(f"data/generator/{corpus_type}_summaries.pt")
+        p_copy = torch.load(f"data/generator/{corpus_type}_p_copy.pt")
+        copy_indices = torch.load(f"data/generator/{corpus_type}_copy_indices.pt")
+        copy_values = torch.load(f"data/generator/{corpus_type}_copy_values.pt")
+        records = torch.load(f"data/generator/{corpus_type}_records.pt")
+        content_plans = torch.load(f"data/generator/{corpus_type}_content_plans.pt")
+        vocab = pickle.load(open("data/generator/vocab.pt", "rb"))
+        idx_list = pickle.load(open(f"data/generator/{corpus_type}_idx_list.pt", "rb"))
 
     except FileNotFoundError:
-        logging.warning(f"Failed to locate cached generator {corpus_type} corpus!")
+        logging.warning(f"Failed to locate generator {corpus_type} corpus!")
         logging.info(f"Generating a new corpus...")
         summaries, p_copy, copy_indices, copy_values, records, content_plans, vocab, idx_list = preproc_generator_data(
             corpus_type, extractor, planner, folder, dataset)

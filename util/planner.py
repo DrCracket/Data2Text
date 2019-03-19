@@ -211,8 +211,8 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
 
     if corpus_type == "train":  # if corpus is train corpus generate vocabulary
         vocab = Vocab(eos_and_bos=True)
-    elif path.exists(".cache/planner/vocab.pt"):  # else load vocab
-        vocab = pickle.load(open(".cache/planner/vocab.pt", "rb"))
+    elif path.exists("data/planner/vocab.pt"):  # else load vocab
+        vocab = pickle.load(open("data/planner/vocab.pt", "rb"))
     else:  # if it doesn't exist create it
         _, _, vocab, _, _ = preproc_planner_data("train", extractor, folder, dataset)
 
@@ -236,12 +236,12 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     content_plans = pad_sequence(content_plans, batch_first=True)
 
     # wite stuff to disk
-    if not path.exists(".cache/planner"):
-        makedirs(".cache/planner")
-    torch.save(records, f".cache/planner/{corpus_type}_records.pt")
-    torch.save(content_plans, f".cache/planner/{corpus_type}_content_plans.pt")
-    pickle.dump(vocab, open(".cache/planner/vocab.pt", "wb"))
-    pickle.dump(extr_dataset.idx_list, open(f".cache/planner/{corpus_type}_idx_list.pt", "wb"))
+    if not path.exists("data/planner"):
+        makedirs("data/planner")
+    torch.save(records, f"data/planner/{corpus_type}_records.pt")
+    torch.save(content_plans, f"data/planner/{corpus_type}_content_plans.pt")
+    pickle.dump(vocab, open("data/planner/vocab.pt", "wb"))
+    pickle.dump(extr_dataset.idx_list, open(f"data/planner/{corpus_type}_idx_list.pt", "wb"))
 
     return records, content_plans, vocab, extr_dataset.idx_list
 
@@ -251,13 +251,13 @@ def load_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="r
     Load a dataset e.g. for use with a dataloader
     """
     try:
-        records = torch.load(f".cache/planner/{corpus_type}_records.pt")
-        content_plans = torch.load(f".cache/planner/{corpus_type}_content_plans.pt")
-        vocab = pickle.load(open(".cache/planner/vocab.pt", "rb"))
-        idx_list = pickle.load(open(f".cache/planner/{corpus_type}_idx_list.pt", "rb"))
+        records = torch.load(f"data/planner/{corpus_type}_records.pt")
+        content_plans = torch.load(f"data/planner/{corpus_type}_content_plans.pt")
+        vocab = pickle.load(open("data/planner/vocab.pt", "rb"))
+        idx_list = pickle.load(open(f"data/planner/{corpus_type}_idx_list.pt", "rb"))
 
     except FileNotFoundError:
-        logging.warning(f"Failed to locate cached content planner {corpus_type} corpus!")
+        logging.warning(f"Failed to locate content planner {corpus_type} corpus!")
         logging.info(f"Generating a new corpus...")
         records, content_plans, vocab, idx_list = preproc_planner_data(corpus_type, extractor, folder, dataset)
 

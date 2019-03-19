@@ -1,6 +1,6 @@
 # ignore the virtual environment
 /.venv
-# directory for cached data
-/.cache
+# directory for preprocessed data
+/data
 # directory for generations
 /generations

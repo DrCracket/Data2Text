@@ -133,7 +133,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
 
     trainer = Engine(_update)
     # save the model every 4 epochs
-    handler = ModelCheckpoint(".cache/model_cache", "generator", save_interval=4,
+    handler = ModelCheckpoint("data/model_cache", "generator", save_interval=4,
                               require_empty=False, save_as_state_dict=True)
     trainer.add_event_handler(Events.EPOCH_COMPLETED, handler, {"generator": generator})
 
@@ -218,7 +218,7 @@ def eval_generator(extractor, content_planner, generator, test=False):
 
 def get_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
                   acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
-    logging.info("Trying to load cached text generator model...")
+    logging.info("Trying to load text generator model...")
     if path.exists("models/text_generator.pt"):
         data = load_generator_data("train", extractor, content_planner)
         generator = TextGenerator(copy.deepcopy(content_planner.record_encoder), len(data.idx2word))

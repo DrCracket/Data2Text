@@ -255,7 +255,7 @@ def eval_extractor(extractor, test=False):
 
 def get_extractor(batch_size=32, epochs=10, learning_rate=0.1, decay=0.5, clip=5, log_interval=1000, lstm=False):
     prefix, Model = ("lstm", LSTMExtractor) if lstm else ("cnn", CNNExtractor)
-    logging.info(f"Trying to load cached {prefix} extractor model...")
+    logging.info(f"Trying to load {prefix} extractor model...")
 
     if path.exists(f"models/{prefix}_extractor.pt"):
         data = load_extractor_data("train")
