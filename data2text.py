@@ -7,6 +7,7 @@
 import logging
 import argparse
 import datetime
+import nltk
 from extractor import (train_extractor, eval_extractor, load_extractor,
                        extractor_is_available)
 from planner import (train_planner, eval_planner, load_planner,
@@ -106,6 +107,9 @@ if __name__ == "__main__":
     console.setFormatter(formatter)
     # add the handler to the root logger
     logging.getLogger("").addHandler(console)
+
+    # download the nltk tokenizers if they aren't already present
+    nltk.download('punkt', download_dir='./', quiet=True)
 
     if args.command == "evaluate":
         corpus = args.corpus == "test"
