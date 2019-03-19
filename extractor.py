@@ -151,8 +151,8 @@ class CNNExtractor(Extractor):
 ###############################################################################
 
 
-def train_extractor(batch_size=32, epochs=10, learning_rate=0.1, decay=0.5, clip=5, log_interval=1000, lstm=False):
-    Model = LSTMExtractor if lstm else CNNExtractor
+def train_extractor(batch_size=32, epochs=10, learning_rate=0.1, decay=0.5, clip=5, log_interval=1000, cnn=False):
+    prefix, Model = ("cnn", CNNExtractor) if cnn else ("lstm", LSTMExtractor)
     data = load_extractor_data("train")
     loader = DataLoader(data, shuffle=True, batch_size=batch_size, pin_memory=torch.cuda.is_available())
     loss_fn = MarginalNLLLoss()
@@ -204,6 +204,10 @@ def train_extractor(batch_size=32, epochs=10, learning_rate=0.1, decay=0.5, clip
     trainer.run(loader, epochs)
     logging.info("Finished training process!")
 
+    if not path.exists("models"):
+        makedirs("models")
+    torch.save(extractor.state_dict(), f"models/{prefix}_extractor.pt")
+
     return extractor.cpu()
 
 
@@ -253,20 +257,21 @@ def eval_extractor(extractor, test=False):
     evaluator.run(loader)
 
 
-def get_extractor(batch_size=32, epochs=10, learning_rate=0.1, decay=0.5, clip=5, log_interval=1000, lstm=False):
-    prefix, Model = ("lstm", LSTMExtractor) if lstm else ("cnn", CNNExtractor)
-    logging.info(f"Trying to load {prefix} extractor model...")
+def extractor_is_available(cnn=False):
+    prefix = "cnn" if cnn else "lstm"
+    if path.exists(f"models/{prefix}_extractor.pt"):
+        logging.info(f"Found saved {prefix} extractor!")
+        return True
+    else:
+        logging.warning(f"Failed to locate saved {prefix} extractor!")
+        return False
+
+
+def load_extractor(cnn=False):
+    prefix, Model = ("cnn", CNNExtractor) if cnn else ("lstm", LSTMExtractor)
 
     if path.exists(f"models/{prefix}_extractor.pt"):
         data = load_extractor_data("train")
         extractor = Model(data.stats["n_words"], data.stats["ent_len"], data.stats["num_len"], num_types=data.stats["n_types"])
         extractor.load_state_dict(torch.load(f"models/{prefix}_extractor.pt", map_location="cpu"))
-        logging.info("Success!")
-    else:
-        logging.warning("Failed to locate model.")
-        if not path.exists("models"):
-            makedirs("models")
-        extractor = train_extractor(batch_size, epochs, learning_rate, decay, clip, log_interval, lstm)
-        torch.save(extractor.state_dict(), f"models/{prefix}_extractor.pt")
-
-    return extractor
+        return extractor

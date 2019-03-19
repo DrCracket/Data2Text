@@ -164,11 +164,11 @@ def calculate_metrics(cs_metric, rg_metric, co_metric, bleu_metric,
     return metrics
 
 
-def genMdFile(extractor, planner, generator, corpus_type, value=None,
-              folder="boxscore-data", dataset="rotowire"):
+def genMdFiles(extractor, planner, generator, corpus_type, value=None,
+               folder="boxscore-data", dataset="rotowire"):
     """
-    Reads the json database and saves a randomly selected entry as a
-    markdown file, if the value is not specified
+    Generates text for all dataset entries of a corpus and saves them as
+    markdown files.
     """
     with tarfile.open(f"{folder}/{dataset}.tar.bz2", "r:bz2") as f:
         raw_data = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())

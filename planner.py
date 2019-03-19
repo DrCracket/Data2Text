@@ -188,6 +188,10 @@ def train_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1,
     trainer.run(loader, epochs)
     logging.info("Finished training process!")
 
+    if not path.exists("models"):
+        makedirs("models")
+    torch.save(content_planner.state_dict(), "models/content_planner.pt")
+
     return content_planner.cpu()
 
 
@@ -240,20 +244,18 @@ def eval_planner(extractor, content_planner, test=False):
     _evaluate()
 
 
-def get_planner(extractor, epochs=25, learning_rate=0.15, acc_val_init=0.1,
-                clip=7, teacher_forcing_ratio=1.0, log_interval=100):
-    logging.info("Trying to load content selection & planning model...")
+def planner_is_available():
+    if path.exists("models/content_planner.pt"):
+        logging.info("Found saved planner!")
+        return True
+    else:
+        logging.warning("Failed to locate saved planner!")
+        return False
+
+
+def load_planner(extractor):
     if path.exists("models/content_planner.pt"):
         data = load_planner_data("train", extractor)
         content_planner = ContentPlanner(len(data.idx2word))
         content_planner.load_state_dict(torch.load("models/content_planner.pt", map_location="cpu"))
-        logging.info("Success!")
-    else:
-        logging.warning("Failed to locate model.")
-        if not path.exists("models"):
-            makedirs("models")
-        content_planner = train_planner(extractor, epochs, learning_rate, acc_val_init,
-                                        clip, teacher_forcing_ratio, log_interval)
-        torch.save(content_planner.state_dict(), "models/content_planner.pt")
-
-    return content_planner
+        return content_planner

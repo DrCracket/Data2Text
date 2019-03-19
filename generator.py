@@ -160,6 +160,10 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
     trainer.run(loader, epochs)
     logging.info("Finished training process!")
 
+    if not path.exists("models"):
+        makedirs("models")
+    torch.save(generator.state_dict(), "models/text_generator.pt")
+
     return generator.cpu()
 
 
@@ -216,20 +220,18 @@ def eval_generator(extractor, content_planner, generator, test=False):
     _evaluate()
 
 
-def get_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
-                  acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
-    logging.info("Trying to load text generator model...")
+def generator_is_available():
+    if path.exists("models/text_generator.pt"):
+        logging.info("Found saved generator!")
+        return True
+    else:
+        logging.warning("Failed to locate saved generator!")
+        return False
+
+
+def load_generator(extractor, content_planner):
     if path.exists("models/text_generator.pt"):
         data = load_generator_data("train", extractor, content_planner)
         generator = TextGenerator(copy.deepcopy(content_planner.record_encoder), len(data.idx2word))
         generator.load_state_dict(torch.load("models/text_generator.pt", map_location="cpu"))
-        logging.info("Success!")
-    else:
-        logging.warning("Failed to locate model.")
-        if not path.exists("models"):
-            makedirs("models")
-        generator = train_generator(extractor, content_planner, epochs, learning_rate,
-                                    acc_val_init, clip, teacher_forcing_ratio, log_interval)
-        torch.save(generator.state_dict(), "models/text_generator.pt")
-
-    return generator
+        return generator
