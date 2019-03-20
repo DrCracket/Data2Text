@@ -1,4 +1,4 @@
-# Data-to-Text Generator
+# Data-to-Text Generations
 This repository contains an implementation for the models described in
 [Data-to-Text Generation with Content Selection and Planning](https://arxiv.org/pdf/1809.00582.pdf).
 For a quick start download the [preprocessed dataset](https://www.dropbox.com/s/3p7rm9fnt9a3zvj/data.zip?dl=0) and the
@@ -29,7 +29,7 @@ pipenv shell
 ```
 
 ## Text Generation
-Generate text with the following command:
+Generate the game summaries with the following command:
 ```sh
 # could also be train or test
 CORPUS=valid
@@ -39,7 +39,16 @@ CORPUS=valid
 The generated texts will be saved as markdown files in the *generations*
 folder. Every markdown file contains the generated summary, the gold summary,
 the associated records, information on which values where copied and the
-metrics.
+metrics.  
+If you want to compare the texts according to their metrics, you can use the
+*sort_by.sh* script:
+```sh
+# could also be co_distance, rg_precision, rg_number, cs_precision or cs_recall   
+METRIC=bleu
+
+./sort_by.sh $METRIC        
+```
+
 ## Evaluation
 Every step in the model pipeline can be evaluated with the following command:
 ```sh
