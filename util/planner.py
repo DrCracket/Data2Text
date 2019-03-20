@@ -263,3 +263,15 @@ def load_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="r
 
     idx2word = dict(((v, k) for k, v in vocab.items()))
     return SequenceDataset(records, content_plans, vocab, idx2word, idx_list)
+
+
+def content_plan_to_text(records, content_plan, idx2word):
+    """
+    Convert a content plan with indices to readable strings
+    """
+    record_strings = list()
+    for content_plan_idx in content_plan[content_plan > 0][1:-1]:  # skip BOS, EOS & PAD
+        record = records[content_plan_idx]
+        record_strings.append([idx2word[index.item()] for index in record])
+
+    return record_strings

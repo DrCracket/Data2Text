@@ -9,6 +9,7 @@ from tabulate import tabulate
 from os import path, makedirs
 from nltk.tokenize.treebank import TreebankWordDetokenizer
 from .generator import load_generator_data, TextGeneratorWrapper
+from .planner import load_planner_data, content_plan_to_text
 from .metrics import CSMetric, RGMetric, COMetric, BleuScore
 
 
@@ -81,6 +82,15 @@ def getOtherInfo(game):
                     stralign="center")
 
 
+def getContentPlanTable(content_plan):
+    """
+    Bring a content plan string array in table format
+    """
+    headers = ["Entity", "Type", "Value", "Home or Away"]
+    return tabulate(content_plan, headers, tablefmt="pipe", numalign="center",
+                    stralign="center")
+
+
 def getSummary(game, gen_summary):
     """
     Reads the summary from a json array and tokenizes it
@@ -92,7 +102,7 @@ def getSummary(game, gen_summary):
     return detokenizer.detokenize(summary), detokenizer.detokenize(gen_summary)
 
 
-def genDescription(game, corpus_type, index, gen_summary, metrics):
+def genDescription(game, corpus_type, index, gen_summary, cont_plan, metrics):
     """
     Selects an entry of the json database and saves it as a markdown string
     """
@@ -134,7 +144,11 @@ def genDescription(game, corpus_type, index, gen_summary, metrics):
     description += "* **CO Damerau-Levenshtein Distance:** {:.4f}%" \
                    .format(metrics["CO"]) + "\n"
     description += "* **BLEU Score:** {:.4f}" \
-                   .format(metrics["BLEU"])
+                   .format(metrics["BLEU"]) + "\n\n\n"
+
+    # content plan
+    description += "## Content Plan\n\n"
+    description += getContentPlanTable(cont_plan)
 
     return description, filename
 
@@ -176,6 +190,10 @@ def genMdFiles(extractor, planner, generator, corpus_type, value=None,
                                    planner,
                                    folder,
                                    dataset)
+    plan_data = load_planner_data(corpus_type,
+                                  extractor,
+                                  folder,
+                                  dataset)
 
     t_generator = TextGeneratorWrapper(generator, gen_data)
     cs_metric = CSMetric(extractor, corpus_type)
@@ -191,6 +209,9 @@ def genMdFiles(extractor, planner, generator, corpus_type, value=None,
     for index in iterable:
         roto_index = gen_data.idx_list[index]
         gen_summary_markup, gen_summary = t_generator.generate_text(index)
+        content_plan_str = content_plan_to_text(plan_data.sequence[index],
+                                                plan_data.content_plan[index],
+                                                plan_data.idx2word)
         metrics = calculate_metrics(cs_metric, rg_metric, co_metric,
                                     bleu_metric, extractor, roto_index,
                                     gen_summary,
@@ -200,6 +221,7 @@ def genMdFiles(extractor, planner, generator, corpus_type, value=None,
                                                corpus_type,
                                                roto_index,
                                                gen_summary_markup,
+                                               content_plan_str,
                                                metrics)
         if not path.exists("generations"):
             makedirs("generations")

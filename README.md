@@ -38,8 +38,8 @@ CORPUS=valid
 ```
 The generated texts will be saved as markdown files in the *generations*
 folder. Every markdown file contains the generated summary, the gold summary,
-the associated records, information on which values where copied and the
-metrics.
+the associated records, information on which values where copied, the content
+plan and the metrics.
 
 If you want to compare the texts according to their metrics, you can use the
 *sort_by.sh* script:
