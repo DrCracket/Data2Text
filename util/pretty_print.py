@@ -210,7 +210,7 @@ def genMdFiles(extractor, planner, generator, corpus_type, value=None,
         roto_index = gen_data.idx_list[index]
         gen_summary_markup, gen_summary = t_generator.generate_text(index)
         content_plan_str = content_plan_to_text(plan_data.sequence[index],
-                                                plan_data.content_plan[index],
+                                                gen_data.content_plan[index],
                                                 plan_data.idx2word)
         metrics = calculate_metrics(cs_metric, rg_metric, co_metric,
                                     bleu_metric, extractor, roto_index,

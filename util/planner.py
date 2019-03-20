@@ -270,7 +270,7 @@ def content_plan_to_text(records, content_plan, idx2word):
     Convert a content plan with indices to readable strings
     """
     record_strings = list()
-    for content_plan_idx in content_plan[content_plan > 0][1:-1]:  # skip BOS, EOS & PAD
+    for content_plan_idx in content_plan[content_plan > 0]:
         record = records[content_plan_idx]
         record_strings.append([idx2word[index.item()] for index in record])
 
