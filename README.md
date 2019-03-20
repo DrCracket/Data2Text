@@ -31,7 +31,7 @@ pipenv shell
 ## Text Generation
 Generate the game summaries with the following command:
 ```sh
-# could also be train or test
+# could also be 'train' or 'test'
 CORPUS=valid
 
 ./data2text.py generate --corpus $CORPUS
@@ -39,11 +39,12 @@ CORPUS=valid
 The generated texts will be saved as markdown files in the *generations*
 folder. Every markdown file contains the generated summary, the gold summary,
 the associated records, information on which values where copied and the
-metrics.  
+metrics.
+
 If you want to compare the texts according to their metrics, you can use the
 *sort_by.sh* script:
 ```sh
-# could also be co_distance, rg_precision, rg_number, cs_precision or cs_recall   
+# could also be 'co_distance', 'rg_precision', 'rg_number', 'cs_precision' or 'cs_recall'   
 METRIC=bleu
 
 ./sort_by.sh $METRIC        
@@ -52,7 +53,7 @@ METRIC=bleu
 ## Evaluation
 Every step in the model pipeline can be evaluated with the following command:
 ```sh
-# could also be extractor or planner
+# could also be 'extractor' or 'planner'
 STAGE=generator
 # could also be test
 CORPUS=valid
@@ -64,7 +65,7 @@ CORPUS=valid
 If you want to train the models yourself, you can do so with the following
 command:
 ```sh
-# could also be extractor, planner or generator
+# could also be 'extractor', 'planner' or 'generator'
 STAGE=pipeline
 
 ./data2text.py train --stage $STAGE
