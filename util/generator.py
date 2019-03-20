@@ -300,11 +300,16 @@ class TextGeneratorWrapper():
     generate text
     """
     generator = None
+    dataset = None
 
-    def __init__(self, generator):
+    def __init__(self, generator, dataset):
         self.generator = generator.eval().to(device)
+        self.dataset = dataset
 
-    def generate_text(self, vocab, idx2word, entry):
+    def generate_text(self, index):
+        vocab = self.dataset.vocab
+        idx2word = self.dataset.idx2word
+        entry = self.dataset[index]
         _, _, records, content_plan, _, copy_values = entry
 
         records, content_plan, copy_values = to_device([records.unsqueeze(0),

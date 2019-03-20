@@ -14,7 +14,9 @@ class DefaultListOrderedDict(OrderedDict):
 
 
 class Vocab(dict):
-    """"dict that uses the length of the dict as value for every mew key"""
+    """"
+    dict that uses the length of the dict as value for every mew key
+    """
 
     def __init__(self, words=None, eos_and_bos=False):
         self[PAD_WORD] = len(self)  # 0
@@ -42,7 +44,9 @@ class Vocab(dict):
 
 
 class OrderedCounter(Counter, OrderedDict):
-    """Counter that remembers the order elements are first encountered"""
+    """
+    Counter that remembers the order elements are first encountered
+    """
 
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, OrderedDict(self))
@@ -52,6 +56,9 @@ class OrderedCounter(Counter, OrderedDict):
 
 
 class ExtractorDataset(Dataset):
+    """
+    Dataset implementation for the content extractor
+    """
     sents = None
     entdists = None
     numdists = None
@@ -85,6 +92,9 @@ class ExtractorDataset(Dataset):
 
 
 class SequenceDataset(Dataset):
+    """
+    Dataset implementation for the content planner
+    """
     sequence = None
     content_plan = None
     idx2word = None
@@ -107,6 +117,9 @@ class SequenceDataset(Dataset):
 
 
 class CopyDataset(SequenceDataset):
+    """
+    Dataset implementation for the text generator
+    """
     p_copy = None
     copy_indices = None
     copy_values = None

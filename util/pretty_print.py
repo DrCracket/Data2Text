@@ -6,7 +6,6 @@
 import tarfile
 from json import loads
 from tabulate import tabulate
-from random import randrange
 from os import path, makedirs
 from nltk.tokenize.treebank import TreebankWordDetokenizer
 from .generator import load_generator_data, TextGeneratorWrapper
@@ -178,7 +177,7 @@ def genMdFiles(extractor, planner, generator, corpus_type, value=None,
                                    folder,
                                    dataset)
 
-    t_generator = TextGeneratorWrapper(generator)
+    t_generator = TextGeneratorWrapper(generator, gen_data)
     cs_metric = CSMetric(extractor, corpus_type)
     rg_metric = RGMetric(extractor, corpus_type)
     co_metric = COMetric(extractor, corpus_type)
@@ -190,11 +189,8 @@ def genMdFiles(extractor, planner, generator, corpus_type, value=None,
         iterable = [value]
 
     for index in iterable:
-        entry = gen_data[index]
         roto_index = gen_data.idx_list[index]
-        gen_summary_markup, gen_summary = \
-            t_generator.generate_text(gen_data.vocab, gen_data.idx2word,
-                                      entry)
+        gen_summary_markup, gen_summary = t_generator.generate_text(index)
         metrics = calculate_metrics(cs_metric, rg_metric, co_metric,
                                     bleu_metric, extractor, roto_index,
                                     gen_summary,
