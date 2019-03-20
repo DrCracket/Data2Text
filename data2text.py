@@ -8,6 +8,7 @@ import logging
 import argparse
 import datetime
 import nltk
+from os import path, makedirs
 from extractor import (train_extractor, eval_extractor, load_extractor,
                        extractor_is_available)
 from planner import (train_planner, eval_planner, load_planner,
@@ -92,11 +93,13 @@ if __name__ == "__main__":
 
     # configure logging
     if not args.no_log:
+        if not path.exists("logs"):
+            makedirs("logs")
         now = datetime.datetime.now()
         logging.basicConfig(level=logging.INFO,
                             format="%(asctime)s %(levelname)-8s %(message)s",
                             datefmt="%m-%d %H:%M",
-                            filename=now.strftime("%m-%d_%H:%M.log"),
+                            filename=now.strftime("logs/%m-%d_%H:%M.log"),
                             filemode="w")
     # define a Handler which writes INFO messages or higher to the sys.stderr
     console = logging.StreamHandler()

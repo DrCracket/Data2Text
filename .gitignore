@@ -8,5 +8,5 @@
 /generations
 # ignore nltk tokenizers
 /tokenizers
-# ignore log files
-*.log
+# ignore logs folder
+/logs
