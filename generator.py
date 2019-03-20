@@ -183,7 +183,7 @@ def eval_generator(extractor, content_planner, generator, test=False):
         cs_metric = CSMetric(extractor, "test" if test else "valid")
         rg_metric = RGMetric(extractor, "test" if test else "valid")
         co_metric = COMetric(extractor, "test" if test else "valid")
-        bleu_metric = BleuScore(preproc=True)
+        bleu_metric = BleuScore()
         for idx, batch in enumerate(loader):
             gold_text, _, records, content_plan, _, copy_values = to_device(batch)
             # remove all the zero padded values from content plans

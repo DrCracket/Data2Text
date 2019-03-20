@@ -10,7 +10,7 @@ from json import loads
 from abc import abstractmethod, ABC
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from pyxdameraulevenshtein import normalized_damerau_levenshtein_distance
-from .helper_funcs import get_ents, append_candidate_rels, append_multilabeled_data, preproc_text
+from .helper_funcs import get_ents, append_candidate_rels, append_multilabeled_data
 from .extractor import load_extractor_data
 from .constants import prons, ls_keys, bs_keys, device
 from .data_structures import Vocab
@@ -152,7 +152,7 @@ class ExtractiveMetric(ABC):
 
 class CSMetric(ExtractiveMetric):
     """
-    Content Selection (CS): precision and re-call of unique relations extracted
+    Content Selection (CS): precision and recall of unique relations extracted
     from the generated summary that are also extracted from the gold summary. This
     measures how well the generated document matches the gold document in terms of
     selecting which records to generate.
@@ -207,7 +207,7 @@ class RGMetric(ExtractiveMetric):
     """
     Relation Generation (RG): precision and number of unique relations
     extracted from the generated text, that also appear in the dataset. This
-    measures how well the system is able to generate text con-taining factual
+    measures how well the system is able to generate text containing factual
     (i.e., correct) records.
     """
 
@@ -298,18 +298,12 @@ class BleuScore():
     bleu = 0
     size = 0
     smooth = None
-    preproc = False
 
-    def __init__(self, preproc=False):
+    def __init__(self):
         self.smooth = SmoothingFunction().method1
-        self.preproc = preproc
 
     def __call__(self, reference, hypothesis):
-        if self.preproc:
-            # preprocess the gold labels, so they are identical to the summaries the model trained on
-            self.bleu += sentence_bleu([preproc_text(" ".join(reference))], hypothesis, smoothing_function=self.smooth)
-        else:
-            self.bleu += sentence_bleu([reference], hypothesis, smoothing_function=self.smooth)
+        self.bleu += sentence_bleu([reference], hypothesis, smoothing_function=self.smooth)
         self.size += 1
 
     def calculate(self):
