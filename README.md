@@ -1,10 +1,9 @@
 # Data-to-Text Generations
-This repository contains an implementation for the models described in
+This repository contains an implementation based on the models described in
 [Data-to-Text Generation with Content Selection and Planning](https://arxiv.org/pdf/1809.00582.pdf).
-For a quick start download the [preprocessed dataset](https://www.dropbox.com/s/3p7rm9fnt9a3zvj/data.zip?dl=0) and the
-[pretrained models](https://www.dropbox.com/s/ufz5s5d1sznfs26/models.zip?dl=0) and drop their contents into the root
-folder of this repository. This will save you from preprocessing and training,
-which requires a lot of time.
+However instead of using a neural content planner to produce content plans,
+this implementation uses template-based content plans by defaulr, which improve
+the generated texts.
 
 ## Cloning
 Clone the repository with the following command:
@@ -23,10 +22,16 @@ dependencies:
 cd $PATH_TO_REPOSITORY
 pipenv install
 ```
-At last start a shell within the created virtual environment:
+After that start a shell within the created virtual environment:
 ```sh
 pipenv shell
 ```
+For a quick start download the
+[preprocessed dataset](https://www.dropbox.com/s/iq06a5m2mxask98/data.zip?dl=0)
+and the
+[pretrained models](https://www.dropbox.com/s/ufz5s5d1sznfs26/models.zip?dl=0)
+and drop their contents into the root folder of this repository. This will save
+you from preprocessing and training, which requires a lot of time.
 
 ## Text Generation
 Generate the game summaries with the following command:
@@ -35,6 +40,9 @@ Generate the game summaries with the following command:
 CORPUS=valid
 
 ./data2text.py generate --corpus $CORPUS
+
+# if you want to use content plans created by the content-planner, use this command:
+./data2text.py generate --corpus $CORPUS --use-planner
 ```
 The generated texts will be saved as markdown files in the *generations*
 folder. Every markdown file contains the generated summary, the gold summary,
@@ -59,6 +67,9 @@ STAGE=generator
 CORPUS=valid
 
 ./data2text.py evaluate --stage $STAGE --corpus $CORPUS
+
+# if you want to use content plans created by the content-planner, use this command:
+./data2text.py evaluate --stage $STAGE --corpus $CORPUS --use-planner
 ```
 
 ## Training
