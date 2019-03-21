@@ -102,11 +102,13 @@ def getSummary(game, gen_summary):
     return detokenizer.detokenize(summary), detokenizer.detokenize(gen_summary)
 
 
-def genDescription(game, corpus_type, index, gen_summary, cont_plan, metrics):
+def genDescription(game, corpus_type, index, gen_summary, cont_plan, metrics,
+                   planner=False):
     """
     Selects an entry of the json database and saves it as a markdown string
     """
-    filename = "{}_{}.md".format(corpus_type, str(index + 1))
+    prefix = "" if planner else "template_"
+    filename = "{}{}_{}.md".format(prefix, corpus_type, str(index + 1))
     description = str()
 
     # print the title
@@ -223,7 +225,8 @@ def genMdFiles(extractor, content_planner, generator, corpus_type, value=None,
                                                roto_index,
                                                gen_summary_markup,
                                                content_plan_str,
-                                               metrics)
+                                               metrics,
+                                               planner)
         if not path.exists("generations"):
             makedirs("generations")
         with open("generations/" + filename, "w") as file_:
