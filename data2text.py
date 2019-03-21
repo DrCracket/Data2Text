@@ -48,7 +48,7 @@ def get_generator(parser, cnn):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="""Generate descriptions for
             for data tables from the BoxScore dataset.""")
-    parser.add_argument("--cnn",
+    parser.add_argument("--use-cnn",
                         action="store_true",
                         help="""Global setting that controls if the cnn
                         extractor should be used instead of the lstm
@@ -70,6 +70,11 @@ if __name__ == "__main__":
                              choices=["valid", "test"],
                              default="valid",
                              help="Specify the corpus to use for evaluation.")
+    eval_parser.add_argument("--use-planner",
+                             action="store_true",
+                             help="""Controls if the generated content plans of
+                             the content planner should be used instead of the
+                             templated ones.""")
 
     gen_parser = subparsers.add_parser("generate",
                                        help="""Generate the textual
@@ -79,15 +84,20 @@ if __name__ == "__main__":
                             choices=["train", "valid", "test"],
                             default="valid",
                             help="Specify the corpus to use for generation.")
+    gen_parser.add_argument("--use-planner",
+                            action="store_true",
+                            help="""Controls if the generated content plans of
+                            the content planner should be used instead of the
+                            templated ones.""")
 
-    gen_parser = subparsers.add_parser("train",
-                                       help="""Train the whole pipeline or a
-                                       model from a specific pipeline
-                                       stage.""")
-    gen_parser.add_argument("--stage",
-                            choices=["extractor", "planner", "generator",
-                                     "pipeline"],
-                            default="pipeline")
+    train_parser = subparsers.add_parser("train",
+                                         help="""Train the whole pipeline or a
+                                         model from a specific pipeline
+                                         stage.""")
+    train_parser.add_argument("--stage",
+                              choices=["extractor", "planner", "generator",
+                                       "pipeline"],
+                              default="pipeline")
 
     args = parser.parse_args()
 
@@ -117,35 +127,35 @@ if __name__ == "__main__":
     if args.command == "evaluate":
         corpus = args.corpus == "test"
         if args.stage == "extractor":
-            extractor = get_extractor(parser, cnn=args.cnn)
+            extractor = get_extractor(parser, cnn=args.use_cnn)
             eval_extractor(extractor, test=corpus)
         elif args.stage == "planner":
-            extractor = get_extractor(parser, cnn=args.cnn)
-            planner = get_planner(parser, cnn=args.cnn)
+            extractor = get_extractor(parser, cnn=args.use_cnn)
+            planner = get_planner(parser, cnn=args.use_cnn)
             eval_planner(extractor, planner, test=corpus)
         elif args.stage == "generator":
-            extractor = get_extractor(parser, cnn=args.cnn)
-            planner = get_planner(parser, cnn=args.cnn)
-            generator = get_generator(parser, cnn=args.cnn)
-            eval_generator(extractor, planner, generator, test=corpus)
+            extractor = get_extractor(parser, cnn=args.use_cnn)
+            planner = get_planner(parser, cnn=args.use_cnn)
+            generator = get_generator(parser, cnn=args.use_cnn)
+            eval_generator(extractor, planner, generator, test=corpus, planner=args.use_planner)
 
     elif args.command == "generate":
-        extractor = get_extractor(parser, cnn=args.cnn)
-        planner = get_planner(parser, cnn=args.cnn)
-        generator = get_generator(parser, cnn=args.cnn)
-        genMdFiles(extractor, planner, generator, args.corpus)
+        extractor = get_extractor(parser, cnn=args.use_cnn)
+        planner = get_planner(parser, cnn=args.use_cnn)
+        generator = get_generator(parser, cnn=args.use_cnn)
+        genMdFiles(extractor, planner, generator, args.corpus, planner=args.use_planner)
 
     elif args.command == "train":
         if args.stage == "extractor":
-            train_extractor(cnn=args.cnn)
+            train_extractor(cnn=args.use_cnn)
         elif args.stage == "planner":
-            extractor = get_extractor(parser, cnn=args.cnn)
+            extractor = get_extractor(parser, cnn=args.use_cnn)
             train_planner(extractor)
         elif args.stage == "generator":
-            extractor = get_extractor(parser, cnn=args.cnn)
-            planner = get_planner(parser, cnn=args.cnn)
+            extractor = get_extractor(parser, cnn=args.use_cnn)
+            planner = get_planner(parser, cnn=args.use_cnn)
             train_generator(extractor, planner)
         elif args.stage == "pipeline":
-            extractor = train_extractor(cnn=args.cnn)
+            extractor = train_extractor(cnn=args.use_cnn)
             planner = train_planner(extractor)
             train_generator(extractor, planner)

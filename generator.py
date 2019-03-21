@@ -79,9 +79,9 @@ class TextGenerator(nn.Module):
 ###############################################################################
 
 
-def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
-                    acc_val_init=0.1, clip=7, teacher_forcing_ratio=1.0, log_interval=100):
-    data = load_generator_data("train", extractor, content_planner)
+def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15, acc_val_init=0.1,
+                    clip=7, teacher_forcing_ratio=1.0, log_interval=100):
+    data = load_generator_data("train", extractor, content_planner, planner=True)
     loader = DataLoader(data, shuffle=True, pin_memory=torch.cuda.is_available())  # online learning
 
     generator = TextGenerator(copy.deepcopy(content_planner.record_encoder), len(data.idx2word)).to(device)
@@ -167,16 +167,17 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15,
     return generator.cpu()
 
 
-def eval_generator(extractor, content_planner, generator, test=False):
+def eval_generator(extractor, content_planner, generator, test=False, planner=False):
     generator = generator.to(device)
     if test:
         used_set = "Test"
-        data = load_generator_data("test", extractor, content_planner)
+        data = load_generator_data("test", extractor, content_planner, planner=planner)
         loader = DataLoader(data)
     else:
         used_set = "Validation"
-        data = load_generator_data("valid", extractor, content_planner)
+        data = load_generator_data("valid", extractor, content_planner, planner=planner)
         loader = DataLoader(data)
+        prefix = "" if planner else " (without planner)"
 
     def _evaluate():
         generator.eval()
@@ -212,10 +213,14 @@ def eval_generator(extractor, content_planner, generator, test=False):
             rg_metric(gen_sum, data.idx_list[idx])
             bleu_metric(gold_sum, gen_sum)
 
-        logging.info("{} Results - CS Precision: {:.4f}%, CS Recall: {:.4f}%".format(used_set, *cs_metric.calculate()))
-        logging.info("{} Results - RG Precision: {:.4f}%, RG #: {:.4f}".format(used_set, *rg_metric.calculate()))
-        logging.info("{} Results - CO Damerau-Levenshtein Distance: {:.4f}%".format(used_set, co_metric.calculate()))
-        logging.info("{} Results - BLEU Score: {:.4f}".format(used_set, bleu_metric.calculate()))
+        logging.info("{}{} Results - CS Precision: {:.4f}%, CS Recall: {:.4f}%"
+                     .format(used_set, prefix, *cs_metric.calculate()))
+        logging.info("{}{} Results - RG Precision: {:.4f}%, RG #: {:.4f}"
+                     .format(used_set, prefix, *rg_metric.calculate()))
+        logging.info("{}{} Results - CO Damerau-Levenshtein Distance: {:.4f}%"
+                     .format(used_set, prefix, co_metric.calculate()))
+        logging.info("{}{} Results - BLEU Score: {:.4f}"
+                     .format(used_set, prefix, bleu_metric.calculate()))
 
     _evaluate()
 
@@ -231,7 +236,7 @@ def generator_is_available():
 
 def load_generator(extractor, content_planner):
     if path.exists("models/text_generator.pt"):
-        data = load_generator_data("train", extractor, content_planner)
+        data = load_generator_data("train", extractor, content_planner, planner=True)
         generator = TextGenerator(copy.deepcopy(content_planner.record_encoder), len(data.idx2word))
         generator.load_state_dict(torch.load("models/text_generator.pt", map_location="cpu"))
         return generator

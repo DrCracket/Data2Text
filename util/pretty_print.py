@@ -177,8 +177,8 @@ def calculate_metrics(cs_metric, rg_metric, co_metric, bleu_metric,
     return metrics
 
 
-def genMdFiles(extractor, planner, generator, corpus_type, value=None,
-               folder="boxscore-data", dataset="rotowire"):
+def genMdFiles(extractor, content_planner, generator, corpus_type, value=None,
+               folder="boxscore-data", dataset="rotowire", planner=False):
     """
     Generates text for all dataset entries of a corpus and saves them as
     markdown files.
@@ -187,9 +187,10 @@ def genMdFiles(extractor, planner, generator, corpus_type, value=None,
         raw_data = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())
     gen_data = load_generator_data(corpus_type,
                                    extractor,
-                                   planner,
+                                   content_planner,
                                    folder,
-                                   dataset)
+                                   dataset,
+                                   planner)
     plan_data = load_planner_data(corpus_type,
                                   extractor,
                                   folder,

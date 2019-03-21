@@ -246,6 +246,82 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     return records, content_plans, vocab, extr_dataset.idx_list
 
 
+def generate_template_plans(corpus_type, folder="boxscore-data", dataset="rotowire"):
+    """
+    Generate content plans of the following format:
+    Winner-Team: {TEAM-CITY, TEAM-NAME, TEAM-WINS, TEAM-LOSSES, TEAM-PTS}
+    Loser-Team: {TEAM-CITY, TEAM-NAME, TEAM-WINS, TEAM-LOSSES, TEAM-PTS}
+    Winner-TEAM: {TEAM-FG_PVT}
+    Loser-TEAM: {TEAM-FG_PVT}
+    Best-Winner-Team-Player: {PLAYER-FIRST_NAME, PLAYER-SECOND_NAME,
+                              PLAYER-PTS, PLAYER-REB, PLAYER-AST,
+                              PLAYER-STL, PLAYER-BLK}
+    Best-Loser-Team-Player: {PLAYER-FIRST_NAME, PLAYER-SECOND_NAME,
+                             PLAYER-PTS, PLAYER-REB, PLAYER-AST,
+                             PLAYER-STL, PLAYER-BLK}
+    2-2nd-Best-Winner-Team-Players: {PLAYER-FIRST_NAME, PLAYER-SECOND_NAME,
+                                     PLAYER-PTS, PLAYER-REB, PLAYER-AST}
+    2-2nd-Best-Loser-Team-Players: {PLAYER-FIRST_NAME, PLAYER-SECOND_NAME,
+                                    PLAYER-PTS, PLAYER-REB, PLAYER-AST}
+    """
+    with tarfile.open(f"{folder}/{dataset}.tar.bz2", "r:bz2") as f:
+        raw_dataset = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())
+
+    content_plans = list()
+    for dim1, raw_entry in enumerate(raw_dataset):
+        content_plan = list()
+        entry_records, _ = create_records(raw_entry)
+
+        joint_records = [tuple_ for set_ in entry_records.values() for tuple_ in set_]
+        teams = [x for x in joint_records if x[1][1] in ["TEAM-CITY", "TEAM-NAME",
+                                                         "TEAM-WINS", "TEAM-LOSSES",
+                                                         "TEAM-PTS", "TEAM-FG_PCT"]]
+        home_team = [x for x in teams if x[1][3] == "HOME"]
+        away_team = [x for x in teams if x[1][3] == "AWAY"]
+        home_pts = [x[1][2] for x in home_team if x[1][1] == "TEAM-PTS"][0]
+        away_pts = [x[1][2] for x in away_team if x[1][1] == "TEAM-PTS"][0]
+        sorted_teams = [home_team, away_team] if home_pts > away_pts else [away_team, home_team]
+
+        for team in sorted_teams:
+            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-CITY"])
+            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-NAME"])
+            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-WINS"])
+            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-LOSSES"])
+            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-PTS"])
+        for team in sorted_teams:
+            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-FG_PCT"])
+
+        players = [x for x in joint_records if x[1][1] in ["PLAYER-FIRST_NAME", "PLAYER-SECOND_NAME",
+                                                           "PLAYER-PTS", "PLAYER-REB", "PLAYER-AST",
+                                                           "PLAYER-STL", "PLAYER-BLK"]]
+        home_players = [x for x in players if x[1][3] == "HOME"]
+        away_players = [x for x in players if x[1][3] == "AWAY"]
+        sorted_players = [home_players, away_players]if home_players > away_players else [away_players, home_players]
+
+        for team in sorted_players:
+            max_entity = max([x for x in team if x[1][1] == "PLAYER-PTS"],
+                             key=lambda x: int(x[1][2]) if x[1][2].isdigit() else -1)[1][0]
+            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-FIRST_NAME"])
+            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-SECOND_NAME"])
+            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-PTS"])
+            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-REB"])
+            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-AST"])
+            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-STL"])
+            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-BLK"])
+
+            other_entities = [x[1][0] for x in sorted([x for x in team if x[1][1] == "PLAYER-PTS"],
+                              key=lambda x: int(x[1][2]) if x[1][2].isdigit() else -1, reverse=True)[1:3]]
+            for entity in other_entities:
+                content_plan.extend([x[0] for x in team if x[1][0] == entity and x[1][1] == "PLAYER-FIRST_NAME"])
+                content_plan.extend([x[0] for x in team if x[1][0] == entity and x[1][1] == "PLAYER-SECOND_NAME"])
+                content_plan.extend([x[0] for x in team if x[1][0] == entity and x[1][1] == "PLAYER-PTS"])
+                content_plan.extend([x[0] for x in team if x[1][0] == entity and x[1][1] == "PLAYER-REB"])
+                content_plan.extend([x[0] for x in team if x[1][0] == entity and x[1][1] == "PLAYER-AST"])
+
+        content_plans.append(content_plan)
+    return content_plans
+
+
 def load_planner_data(corpus_type, extractor, folder="boxscore-data", dataset="rotowire"):
     """
     Load a dataset e.g. for use with a dataloader
