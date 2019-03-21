@@ -169,6 +169,7 @@ def train_generator(extractor, content_planner, epochs=25, learning_rate=0.15, a
 
 def eval_generator(extractor, content_planner, generator, test=False, planner=False):
     generator = generator.to(device)
+    prefix = "" if planner else " (without planner)"
     if test:
         used_set = "Test"
         data = load_generator_data("test", extractor, content_planner, planner=planner)
@@ -177,7 +178,6 @@ def eval_generator(extractor, content_planner, generator, test=False, planner=Fa
         used_set = "Validation"
         data = load_generator_data("valid", extractor, content_planner, planner=planner)
         loader = DataLoader(data)
-        prefix = "" if planner else " (without planner)"
 
     def _evaluate():
         generator.eval()
