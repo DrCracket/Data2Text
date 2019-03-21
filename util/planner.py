@@ -283,40 +283,54 @@ def generate_template_plans(corpus_type, folder="boxscore-data", dataset="rotowi
         sorted_teams = [home_team, away_team] if home_pts > away_pts else [away_team, home_team]
 
         for team in sorted_teams:
-            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-CITY"])
-            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-NAME"])
-            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-WINS"])
-            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-LOSSES"])
-            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-PTS"])
+            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-CITY" and x[1][2] != "N/A"])
+            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-NAME" and x[1][2] != "N/A"])
+            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-WINS" and x[1][2] != "N/A"])
+            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-LOSSES" and x[1][2] != "N/A"])
+            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-PTS" and x[1][2] != "N/A"])
         for team in sorted_teams:
-            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-FG_PCT"])
+            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-FG_PCT" and x[1][2] != "N/A"])
 
         players = [x for x in joint_records if x[1][1] in ["PLAYER-FIRST_NAME", "PLAYER-SECOND_NAME",
                                                            "PLAYER-PTS", "PLAYER-REB", "PLAYER-AST",
                                                            "PLAYER-STL", "PLAYER-BLK"]]
         home_players = [x for x in players if x[1][3] == "HOME"]
         away_players = [x for x in players if x[1][3] == "AWAY"]
-        sorted_players = [home_players, away_players]if home_players > away_players else [away_players, home_players]
+        sorted_players = [home_players, away_players] if home_pts > away_pts else [away_players, home_players]
 
         for team in sorted_players:
             max_entity = max([x for x in team if x[1][1] == "PLAYER-PTS"],
                              key=lambda x: int(x[1][2]) if x[1][2].isdigit() else -1)[1][0]
-            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-FIRST_NAME"])
-            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-SECOND_NAME"])
-            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-PTS"])
-            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-REB"])
-            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-AST"])
-            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-STL"])
-            content_plan.extend([x[0] for x in team if x[1][0] == max_entity and x[1][1] == "PLAYER-BLK"])
+            if max_entity != "N/A":
+                content_plan.extend([x[0] for x in team
+                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-FIRST_NAME" and x[1][2] != "N/A"])
+                content_plan.extend([x[0] for x in team
+                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-SECOND_NAME" and x[1][2] != "N/A"])
+                content_plan.extend([x[0] for x in team
+                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-PTS" and x[1][2] != "N/A"])
+                content_plan.extend([x[0] for x in team
+                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-REB" and x[1][2] != "N/A"])
+                content_plan.extend([x[0] for x in team
+                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-AST" and x[1][2] != "N/A"])
+                content_plan.extend([x[0] for x in team
+                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-STL" and x[1][2] != "N/A"])
+                content_plan.extend([x[0] for x in team
+                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-BLK" and x[1][2] != "N/A"])
 
             other_entities = [x[1][0] for x in sorted([x for x in team if x[1][1] == "PLAYER-PTS"],
                               key=lambda x: int(x[1][2]) if x[1][2].isdigit() else -1, reverse=True)[1:3]]
             for entity in other_entities:
-                content_plan.extend([x[0] for x in team if x[1][0] == entity and x[1][1] == "PLAYER-FIRST_NAME"])
-                content_plan.extend([x[0] for x in team if x[1][0] == entity and x[1][1] == "PLAYER-SECOND_NAME"])
-                content_plan.extend([x[0] for x in team if x[1][0] == entity and x[1][1] == "PLAYER-PTS"])
-                content_plan.extend([x[0] for x in team if x[1][0] == entity and x[1][1] == "PLAYER-REB"])
-                content_plan.extend([x[0] for x in team if x[1][0] == entity and x[1][1] == "PLAYER-AST"])
+                if entity != "N/A":
+                    content_plan.extend([x[0] for x in team
+                                        if x[1][0] == entity and x[1][1] == "PLAYER-FIRST_NAME" and x[1][2] != "N/A"])
+                    content_plan.extend([x[0] for x in team
+                                        if x[1][0] == entity and x[1][1] == "PLAYER-SECOND_NAME" and x[1][2] != "N/A"])
+                    content_plan.extend([x[0] for x in team
+                                        if x[1][0] == entity and x[1][1] == "PLAYER-PTS" and x[1][2] != "N/A"])
+                    content_plan.extend([x[0] for x in team
+                                        if x[1][0] == entity and x[1][1] == "PLAYER-REB" and x[1][2] != "N/A"])
+                    content_plan.extend([x[0] for x in team
+                                        if x[1][0] == entity and x[1][1] == "PLAYER-AST" and x[1][2] != "N/A"])
 
         content_plans.append(content_plan)
     return content_plans
