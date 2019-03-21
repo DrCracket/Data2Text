@@ -2,7 +2,7 @@
 This repository contains an implementation based on the models described in
 [Data-to-Text Generation with Content Selection and Planning](https://arxiv.org/pdf/1809.00582.pdf).
 However instead of using a neural content planner to produce content plans,
-this implementation uses template-based content plans by defaulr, which improve
+this implementation uses template-based content plans by default, which improve
 the generated texts.
 
 ## Cloning
