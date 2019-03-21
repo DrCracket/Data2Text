@@ -12,6 +12,14 @@ git clone --recurse-submodules https://git.ukp.informatik.tu-darmstadt.de/beloua
 ```
 
 ## Setup
+For a quick start download the
+[preprocessed dataset](https://www.dropbox.com/s/iq06a5m2mxask98/data.zip?dl=0)
+and the
+[pretrained models](https://www.dropbox.com/s/ufz5s5d1sznfs26/models.zip?dl=0)
+and drop their contents into the root folder of this repository. This will save
+you from preprocessing and training, which requires a lot of time.
+
+
 Make sure that [pipenv](https://pipenv.readthedocs.io/en/latest/) is installed:
 ```sh
 pip install pipenv
@@ -26,12 +34,6 @@ After that start a shell within the created virtual environment:
 ```sh
 pipenv shell
 ```
-For a quick start download the
-[preprocessed dataset](https://www.dropbox.com/s/iq06a5m2mxask98/data.zip?dl=0)
-and the
-[pretrained models](https://www.dropbox.com/s/ufz5s5d1sznfs26/models.zip?dl=0)
-and drop their contents into the root folder of this repository. This will save
-you from preprocessing and training, which requires a lot of time.
 
 ## Text Generation
 Generate the game summaries with the following command:
