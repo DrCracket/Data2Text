@@ -47,7 +47,7 @@ def get_generator(parser, cnn):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="""Generate descriptions for
-            for data tables from the BoxScore dataset.""")
+            data tables from the BoxScore dataset.""")
     parser.add_argument("--use-cnn",
                         action="store_true",
                         help="""Global setting that controls if the cnn
