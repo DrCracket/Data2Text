@@ -15,33 +15,32 @@ scored_files=()
 
 find_by_bleu() {
     for file in generations/*; do
-        scored_files+="'$(tail -n 1 $file | grep -Po '\d+\.\d+') $(basename $file)' "
+        scored_files+="'$(sed '/## Content Plan/q' $file | head -n -3 | tail -n 1 | grep -Po '\d+\.\d+') $(basename $file)' "
     done
 }
-
 find_by_co_distance() {
     for file in generations/*; do
-        scored_files+="'$(tail -n 2 $file | head -n 1 | grep -Po '\d+\.\d+%') $(basename $file)' "
+        scored_files+="'$(sed '/## Content Plan/q' $file | head -n -3 | tail -n 2 | head -n 1 | grep -Po '\d+\.\d+%') $(basename $file)' "
     done
 }
 find_by_rg_precision() {
     for file in generations/*; do
-        scored_files+="'$(tail -n 3 $file | head -n 1 | grep -Pom 1 '\d+\.\d+%') $(basename $file)' "
+        scored_files+="'$(sed '/## Content Plan/q' $file | head -n -3 | tail -n 3 | head -n 1 | grep -Pom 1 '\d+\.\d+%') $(basename $file)' "
     done
 }
 find_by_rg_number() {
     for file in generations/*; do
-        scored_files+="'$(tail -n 3 $file | head -n 1 | grep -Pom 1 '\d+\.\d+$') $(basename $file)' "
+        scored_files+="'$(sed '/## Content Plan/q' $file | head -n -3 | tail -n 3 | head -n 1 | grep -Pom 1 '\d+\.\d+$') $(basename $file)' "
     done
 }
 find_by_cs_precision() {
     for file in generations/*; do
-        scored_files+="'$(tail -n 4 $file | head -n 1 | grep -Po '\d+\.\d+%' | xargs | awk '{print $1}') $(basename $file)' "
+        scored_files+="'$(sed '/## Content Plan/q' $file | head -n -3 | tail -n 4 | head -n 1 | grep -Po '\d+\.\d+%' | xargs | awk '{print $1}') $(basename $file)' "
     done
 }
 find_by_cs_recall() {
     for file in generations/*; do
-        scored_files+="'$(tail -n 4 $file | head -n 1 | grep -Po '\d+\.\d+%$') $(basename $file)' "
+        scored_files+="'$(sed '/## Content Plan/q' $file | head -n -3 | tail -n 4 | head -n 1 | grep -Po '\d+\.\d+%$') $(basename $file)' "
     done
 }
 
