@@ -93,7 +93,7 @@ def make_content_plan_from_template(corpus_type, dataset, folder, dataset_type):
     """
     Take the templated content plans and turn them into tensors
     """
-    content_plans = generate_template_plans(corpus_type, folder, dataset_type)
+    content_plans = generate_template_plans(corpus_type, dataset.idx_list, folder, dataset_type)
     tensor_content_plans = torch.zeros(len(content_plans), len(content_plans[0]), dtype=torch.long, device=device)
 
     for dim1, content_plan in enumerate(content_plans):

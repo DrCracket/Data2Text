@@ -246,7 +246,7 @@ def preproc_planner_data(corpus_type, extractor, folder="boxscore-data", dataset
     return records, content_plans, vocab, extr_dataset.idx_list
 
 
-def generate_template_plans(corpus_type, folder="boxscore-data", dataset="rotowire"):
+def generate_template_plans(corpus_type, idx_list, folder="boxscore-data", dataset="rotowire"):
     """
     Generate content plans of the following format:
     Winner-Team: {TEAM-CITY, TEAM-NAME, TEAM-WINS, TEAM-LOSSES, TEAM-PTS}
@@ -268,9 +268,9 @@ def generate_template_plans(corpus_type, folder="boxscore-data", dataset="rotowi
         raw_dataset = loads(f.extractfile(f"{dataset}/{corpus_type}.json").read())
 
     content_plans = list()
-    for dim1, raw_entry in enumerate(raw_dataset):
+    for idx in idx_list:
         content_plan = list()
-        entry_records, _ = create_records(raw_entry)
+        entry_records, _ = create_records(raw_dataset[idx])
 
         joint_records = [tuple_ for set_ in entry_records.values() for tuple_ in set_]
         teams = [x for x in joint_records if x[1][1] in ["TEAM-CITY", "TEAM-NAME",
