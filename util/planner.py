@@ -251,8 +251,6 @@ def generate_template_plans(corpus_type, idx_list, folder="boxscore-data", datas
     Generate content plans of the following format:
     Winner-Team: {TEAM-CITY, TEAM-NAME, TEAM-WINS, TEAM-LOSSES, TEAM-PTS}
     Loser-Team: {TEAM-CITY, TEAM-NAME, TEAM-WINS, TEAM-LOSSES, TEAM-PTS}
-    Winner-TEAM: {TEAM-FG_PVT}
-    Loser-TEAM: {TEAM-FG_PVT}
     Best-Winner-Team-Player: {PLAYER-FIRST_NAME, PLAYER-SECOND_NAME,
                               PLAYER-PTS, PLAYER-REB, PLAYER-AST,
                               PLAYER-STL, PLAYER-BLK}
@@ -275,7 +273,7 @@ def generate_template_plans(corpus_type, idx_list, folder="boxscore-data", datas
         joint_records = [tuple_ for set_ in entry_records.values() for tuple_ in set_]
         teams = [x for x in joint_records if x[1][1] in ["TEAM-CITY", "TEAM-NAME",
                                                          "TEAM-WINS", "TEAM-LOSSES",
-                                                         "TEAM-PTS", "TEAM-FG_PCT"]]
+                                                         "TEAM-PTS"]]
         home_team = [x for x in teams if x[1][3] == "HOME"]
         away_team = [x for x in teams if x[1][3] == "AWAY"]
         home_pts = [x[1][2] for x in home_team if x[1][1] == "TEAM-PTS"][0]
@@ -288,8 +286,6 @@ def generate_template_plans(corpus_type, idx_list, folder="boxscore-data", datas
             content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-WINS" and x[1][2] != "N/A"])
             content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-LOSSES" and x[1][2] != "N/A"])
             content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-PTS" and x[1][2] != "N/A"])
-        for team in sorted_teams:
-            content_plan.extend([x[0] for x in team if x[1][1] == "TEAM-FG_PCT" and x[1][2] != "N/A"])
 
         players = [x for x in joint_records if x[1][1] in ["PLAYER-FIRST_NAME", "PLAYER-SECOND_NAME",
                                                            "PLAYER-PTS", "PLAYER-REB", "PLAYER-AST",
