@@ -307,15 +307,15 @@ def generate_template_plans(corpus_type, idx_list, folder="boxscore-data", datas
                 content_plan.extend([x[0] for x in team
                                     if x[1][0] == max_entity and x[1][1] == "PLAYER-SECOND_NAME" and x[1][2] != "N/A"])
                 content_plan.extend([x[0] for x in team
-                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-PTS" and x[1][2] != "N/A"])
+                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-PTS" and x[1][2] not in ["0", "N/A"]])
                 content_plan.extend([x[0] for x in team
-                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-REB" and x[1][2] != "N/A"])
+                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-REB" and x[1][2] not in ["0", "N/A"]])
                 content_plan.extend([x[0] for x in team
-                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-AST" and x[1][2] != "N/A"])
+                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-AST" and x[1][2] not in ["0", "N/A"]])
                 content_plan.extend([x[0] for x in team
-                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-STL" and x[1][2] != "N/A"])
+                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-STL" and x[1][2] not in ["0", "N/A"]])
                 content_plan.extend([x[0] for x in team
-                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-BLK" and x[1][2] != "N/A"])
+                                    if x[1][0] == max_entity and x[1][1] == "PLAYER-BLK" and x[1][2] not in ["0", "N/A"]])
 
             other_entities = [x[1][0] for x in sorted([x for x in team if x[1][1] == "PLAYER-PTS"],
                               key=lambda x: int(x[1][2]) if x[1][2].isdigit() else -1, reverse=True)[1:3]]
@@ -326,11 +326,11 @@ def generate_template_plans(corpus_type, idx_list, folder="boxscore-data", datas
                     content_plan.extend([x[0] for x in team
                                         if x[1][0] == entity and x[1][1] == "PLAYER-SECOND_NAME" and x[1][2] != "N/A"])
                     content_plan.extend([x[0] for x in team
-                                        if x[1][0] == entity and x[1][1] == "PLAYER-PTS" and x[1][2] != "N/A"])
+                                        if x[1][0] == entity and x[1][1] == "PLAYER-PTS" and x[1][2] not in ["0", "N/A"]])
                     content_plan.extend([x[0] for x in team
-                                        if x[1][0] == entity and x[1][1] == "PLAYER-REB" and x[1][2] != "N/A"])
+                                        if x[1][0] == entity and x[1][1] == "PLAYER-REB" and x[1][2] not in ["0", "N/A"]])
                     content_plan.extend([x[0] for x in team
-                                        if x[1][0] == entity and x[1][1] == "PLAYER-AST" and x[1][2] != "N/A"])
+                                        if x[1][0] == entity and x[1][1] == "PLAYER-AST" and x[1][2] not in ["0", "N/A"]])
 
         content_plans.append(content_plan)
     return content_plans

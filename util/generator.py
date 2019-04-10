@@ -94,7 +94,8 @@ def make_content_plan_from_template(corpus_type, dataset, folder, dataset_type):
     Take the templated content plans and turn them into tensors
     """
     content_plans = generate_template_plans(corpus_type, dataset.idx_list, folder, dataset_type)
-    tensor_content_plans = torch.zeros(len(content_plans), len(content_plans[0]), dtype=torch.long, device=device)
+    tensor_content_plans = torch.zeros(len(content_plans), max(len(c_p) for c_p in content_plans), dtype=torch.long,
+                                       device=device)
 
     for dim1, content_plan in enumerate(content_plans):
         for dim2, index in enumerate(content_plan):
@@ -212,8 +213,9 @@ def get_copy_probs(summary, entry_indices, records, vocab, idx2word):
                         if i >= next_expected:
                             next_expected = i + 1
                         break
-        all_sents.extend(tokes)
-        all_p_copy.extend(p_copy)
+        if max(p_copy) == 1:
+            all_sents.extend(tokes)
+            all_p_copy.extend(p_copy)
 
     return all_sents, all_p_copy, copy_indices, copy_values
 
