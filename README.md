@@ -13,9 +13,9 @@ git clone --recurse-submodules https://git.ukp.informatik.tu-darmstadt.de/beloua
 
 ## Setup
 For a quick start download the
-[preprocessed dataset](https://www.dropbox.com/s/iq06a5m2mxask98/data.zip?dl=0)
+[preprocessed dataset](https://www.dropbox.com/s/u3mjbwxskhfyg4m/data.zip?dl=0)
 and the
-[pretrained models](https://www.dropbox.com/s/ufz5s5d1sznfs26/models.zip?dl=0)
+[pretrained models](https://www.dropbox.com/s/8qhrocemwsz54jt/models.zip?dl=0)
 and drop their contents into the root folder of this repository. This will save
 you from preprocessing and training, which requires a lot of time.
 
