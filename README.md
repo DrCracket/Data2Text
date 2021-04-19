@@ -8,7 +8,7 @@ the generated texts.
 ## Cloning
 Clone the repository with the following command:
 ```sh
-git clone --recurse-submodules https://git.ukp.informatik.tu-darmstadt.de/belouadi/data-to-text-generator.git
+git clone --recurse-submodules https://github.com/potamides/Data2Text
 ```
 
 ## Setup
